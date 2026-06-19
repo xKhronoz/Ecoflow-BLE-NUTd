@@ -1,0 +1,5 @@
+.git
+.DS_Store
+ecoflow-ble-nutd
+bin
+dist

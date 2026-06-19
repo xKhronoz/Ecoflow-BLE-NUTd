@@ -1,0 +1,14 @@
+{
+  "name": "ecoflow-ble-nutd",
+  "build": {
+    "dockerfile": "Dockerfile"
+  },
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "golang.Go"
+      ]
+    }
+  },
+  "postCreateCommand": "go build ./..."
+}

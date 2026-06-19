@@ -1,0 +1,12 @@
+/ecoflow-ble-nutd
+/bin/
+/dist/
+
+*.test
+*.out
+*.log
+*.tmp
+
+.DS_Store
+.idea/
+.vscode/
