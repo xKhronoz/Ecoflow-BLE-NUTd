@@ -15,6 +15,8 @@ func New(cfg *config.Config) Provider {
 	switch cfg.Provider.Type {
 	case "json-dir":
 		return NewJSONDir(cfg)
+	case "eco-ble":
+		return NewEcoBLE(cfg)
 	default:
 		return NewMock(cfg)
 	}

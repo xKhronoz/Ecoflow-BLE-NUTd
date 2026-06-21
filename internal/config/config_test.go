@@ -89,3 +89,107 @@ func TestLoadJSONConfig(t *testing.T) {
 		t.Fatalf("defaults = %#v", cfg.Devices[0])
 	}
 }
+
+func TestLoadEcoBLEUserIDConfig(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "ecoflow-ble-nutd.conf")
+	body := `provider:
+  type: eco-ble
+  adapter: hci0
+  auth:
+    user_id: "12345"
+devices:
+  - name: delta2
+    mac: AA:BB:CC:DD:EE:01
+`
+	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("load config: %v", err)
+	}
+	if cfg.Provider.Type != "eco-ble" {
+		t.Fatalf("provider type = %q", cfg.Provider.Type)
+	}
+	if cfg.Provider.Auth.UserID != "12345" {
+		t.Fatalf("user_id = %q", cfg.Provider.Auth.UserID)
+	}
+	if cfg.Provider.ScanTimeoutSeconds != 8 || cfg.Provider.ConnectTimeoutSeconds != 20 || cfg.Provider.ReconnectDelaySeconds != 10 {
+		t.Fatalf("provider defaults = %#v", cfg.Provider)
+	}
+}
+
+func TestLoadEcoBLEEmailPasswordConfig(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "ecoflow-ble-nutd.conf")
+	body := `provider:
+  type: eco-ble
+  auth:
+    email: user@example.com
+    password: secret
+devices:
+  - name: river3
+    mac: AA:BB:CC:DD:EE:02
+`
+	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("load config: %v", err)
+	}
+	if cfg.Provider.Auth.Email != "user@example.com" || cfg.Provider.Auth.Password != "secret" {
+		t.Fatalf("provider auth = %#v", cfg.Provider.Auth)
+	}
+	if cfg.Provider.Auth.Region != "auto" {
+		t.Fatalf("region = %q", cfg.Provider.Auth.Region)
+	}
+}
+
+func TestLoadEcoBLERequiresAuth(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "ecoflow-ble-nutd.conf")
+	body := `provider:
+  type: eco-ble
+devices:
+  - name: delta3
+    mac: AA:BB:CC:DD:EE:03
+`
+	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	if _, err := Load(path); err == nil {
+		t.Fatalf("expected auth validation error")
+	}
+}
+
+func TestLoadEcoBLERequiresMAC(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "ecoflow-ble-nutd.conf")
+	body := `provider:
+  type: eco-ble
+  auth:
+    user_id: "12345"
+devices:
+  - name: delta2
+`
+	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	if _, err := Load(path); err == nil {
+		t.Fatalf("expected MAC validation error")
+	}
+}

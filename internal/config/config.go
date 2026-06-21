@@ -32,9 +32,21 @@ type Device struct {
 }
 
 type ProviderCfg struct {
-	Type        string `json:"type" yaml:"type"` // mock, json-dir, ble-todo
-	JSONDir     string `json:"json_dir" yaml:"json_dir"`
-	PollSeconds int    `json:"poll_seconds" yaml:"poll_seconds"`
+	Type                  string             `json:"type" yaml:"type"` // mock, json-dir, eco-ble
+	JSONDir               string             `json:"json_dir" yaml:"json_dir"`
+	Adapter               string             `json:"adapter" yaml:"adapter"`
+	ScanTimeoutSeconds    int                `json:"scan_timeout_seconds" yaml:"scan_timeout_seconds"`
+	ConnectTimeoutSeconds int                `json:"connect_timeout_seconds" yaml:"connect_timeout_seconds"`
+	ReconnectDelaySeconds int                `json:"reconnect_delay_seconds" yaml:"reconnect_delay_seconds"`
+	PollSeconds           int                `json:"poll_seconds" yaml:"poll_seconds"`
+	Auth                  ProviderAuthConfig `json:"auth" yaml:"auth"`
+}
+
+type ProviderAuthConfig struct {
+	UserID   string `json:"user_id" yaml:"user_id"`
+	Email    string `json:"email" yaml:"email"`
+	Password string `json:"password" yaml:"password"`
+	Region   string `json:"region" yaml:"region"`
 }
 
 func Load(path string) (*Config, error) {
@@ -54,15 +66,38 @@ func Load(path string) (*Config, error) {
 	if c.Provider.Type == "" {
 		c.Provider.Type = "mock"
 	}
+	if c.Provider.Adapter == "" {
+		c.Provider.Adapter = "hci0"
+	}
+	if c.Provider.ScanTimeoutSeconds <= 0 {
+		c.Provider.ScanTimeoutSeconds = 8
+	}
+	if c.Provider.ConnectTimeoutSeconds <= 0 {
+		c.Provider.ConnectTimeoutSeconds = 20
+	}
+	if c.Provider.ReconnectDelaySeconds <= 0 {
+		c.Provider.ReconnectDelaySeconds = 10
+	}
 	if c.Provider.PollSeconds <= 0 {
-		c.Provider.PollSeconds = 10
+		c.Provider.PollSeconds = 15
+	}
+	if c.Provider.Auth.Region == "" {
+		c.Provider.Auth.Region = "auto"
 	}
 	if len(c.Devices) == 0 {
 		return nil, fmt.Errorf("at least one device is required")
 	}
+	switch c.Provider.Type {
+	case "mock", "json-dir", "eco-ble":
+	default:
+		return nil, fmt.Errorf("unsupported provider type %q", c.Provider.Type)
+	}
 	for i := range c.Devices {
 		if c.Devices[i].Name == "" {
 			return nil, fmt.Errorf("device %d name is required", i)
+		}
+		if c.Provider.Type == "eco-ble" && c.Devices[i].MAC == "" {
+			return nil, fmt.Errorf("device %d mac is required for provider eco-ble", i)
 		}
 		if c.Devices[i].LowBatteryPercent <= 0 {
 			c.Devices[i].LowBatteryPercent = 20
@@ -72,6 +107,13 @@ func Load(path string) (*Config, error) {
 		}
 		if c.Devices[i].StaleTimeoutSeconds <= 0 {
 			c.Devices[i].StaleTimeoutSeconds = 60
+		}
+	}
+	if c.Provider.Type == "eco-ble" {
+		if c.Provider.Auth.UserID == "" {
+			if c.Provider.Auth.Email == "" || c.Provider.Auth.Password == "" {
+				return nil, fmt.Errorf("provider.auth.user_id or provider.auth.email/password is required for provider eco-ble")
+			}
 		}
 	}
 	return &c, nil
