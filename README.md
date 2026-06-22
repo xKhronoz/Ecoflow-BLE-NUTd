@@ -258,6 +258,8 @@ Current command coverage:
 | strict NUT quoting/parsing edge cases | partial         | Good enough for current simple clients, not full protocol parity                           |
 | full `upsmon` shutdown semantics      | not verified    | Command stubs exist, but end-to-end shutdown compatibility still needs hardware validation |
 
+There are four levels of NUT protocol coverage, with the first two levels implemented and the last two still in progress.
+
 Level 1: upsc compatible (discovery and read-only variables) [*Currently Implemented*]
 
 - LIST UPS
@@ -318,7 +320,7 @@ If you use this daemon, you should also star and review the upstream `ha-ef-ble`
 
 This repo is licensed under `GNU GPL v3`. See `LICENSE`.
 
-Why `GPLv3` fits this project:
+Why `GPLv3` :
 
 - it keeps redistributed derivatives and modifications under the same copyleft license
 - it matches the goal of keeping protocol and interoperability improvements open
