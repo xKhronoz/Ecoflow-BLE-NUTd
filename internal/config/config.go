@@ -11,6 +11,7 @@ import (
 type Config struct {
 	Listen   string      `json:"listen" yaml:"listen"`
 	Auth     AuthConfig  `json:"auth" yaml:"auth"`
+	Web      WebConfig   `json:"web" yaml:"web"`
 	Devices  []Device    `json:"devices" yaml:"devices"`
 	Provider ProviderCfg `json:"provider" yaml:"provider"`
 }
@@ -18,6 +19,11 @@ type Config struct {
 type AuthConfig struct {
 	Username string `json:"username" yaml:"username"`
 	Password string `json:"password" yaml:"password"`
+}
+
+type WebConfig struct {
+	Enable bool   `json:"enable" yaml:"enable"`
+	Listen string `json:"listen" yaml:"listen"`
 }
 
 type Device struct {
@@ -62,6 +68,9 @@ func Load(path string) (*Config, error) {
 	}
 	if c.Listen == "" {
 		c.Listen = "127.0.0.1:3493"
+	}
+	if c.Web.Enable && c.Web.Listen == "" {
+		c.Web.Listen = "127.0.0.1:8080"
 	}
 	if c.Provider.Type == "" {
 		c.Provider.Type = "mock"

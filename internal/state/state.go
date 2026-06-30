@@ -56,4 +56,29 @@ func (s *Store) Get(name string) (*UPS, bool) {
 	return cp, true
 }
 
+func (s *Store) Snapshot() []UPS {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	names := make([]string, 0, len(s.ups))
+	for name := range s.ups {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	out := make([]UPS, 0, len(names))
+	for _, name := range names {
+		u := s.ups[name]
+		cp := UPS{
+			Name:        u.Name,
+			Description: u.Description,
+			UpdatedAt:   u.UpdatedAt,
+			Vars:        map[string]string{},
+		}
+		for k, v := range u.Vars {
+			cp.Vars[k] = v
+		}
+		out = append(out, cp)
+	}
+	return out
+}
+
 func FormatInt(n int) string { return strconv.Itoa(n) }

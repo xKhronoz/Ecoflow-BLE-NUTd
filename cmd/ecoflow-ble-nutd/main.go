@@ -10,8 +10,9 @@ import (
 
 	"github.com/xkhronoz/ecoflow-ble-nutd/internal/config"
 	"github.com/xkhronoz/ecoflow-ble-nutd/internal/nut"
-	"github.com/xkhronoz/ecoflow-ble-nutd/internal/provider"
+	"github.com/xkhronoz/ecoflow-ble-nutd/internal/runtime"
 	"github.com/xkhronoz/ecoflow-ble-nutd/internal/state"
+	"github.com/xkhronoz/ecoflow-ble-nutd/internal/web"
 )
 
 func main() {
@@ -28,10 +29,15 @@ func main() {
 	defer stop()
 
 	store := state.New()
-	p := provider.New(cfg)
+	manager := runtime.NewProviderManager(cfg, store)
 	go func() {
-		if err := p.Run(ctx, store); err != nil {
-			slog.Error("provider stopped", "error", err)
+		if err := manager.Run(ctx); err != nil {
+			slog.Error("provider manager stopped", "error", err)
+		}
+	}()
+	go func() {
+		if err := web.New(cfg, store, manager).Run(ctx); err != nil {
+			slog.Error("web server stopped", "error", err)
 			stop()
 		}
 	}()

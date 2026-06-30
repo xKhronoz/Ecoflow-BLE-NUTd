@@ -15,6 +15,9 @@ func TestLoadYAMLConfig(t *testing.T) {
 auth:
   username: monuser
   password: secret
+web:
+  enable: true
+  listen: 127.0.0.1:8080
 provider:
   type: mock
   poll_seconds: 15
@@ -39,6 +42,12 @@ devices:
 	}
 	if cfg.Auth.Username != "monuser" || cfg.Auth.Password != "secret" {
 		t.Fatalf("auth = %#v", cfg.Auth)
+	}
+	if cfg.Web.Listen != "127.0.0.1:8080" {
+		t.Fatalf("web.listen = %q", cfg.Web.Listen)
+	}
+	if !cfg.Web.Enable {
+		t.Fatalf("web.enable = false")
 	}
 	if cfg.Provider.Type != "mock" || cfg.Provider.PollSeconds != 15 {
 		t.Fatalf("provider = %#v", cfg.Provider)
@@ -87,6 +96,36 @@ func TestLoadJSONConfig(t *testing.T) {
 	}
 	if cfg.Devices[0].LowBatteryPercent != 20 || cfg.Devices[0].LowRuntimeSeconds != 300 {
 		t.Fatalf("defaults = %#v", cfg.Devices[0])
+	}
+}
+
+func TestLoadWebEnabledDefaultsListen(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "ecoflow-ble-nutd.conf")
+	body := `web:
+  enable: true
+provider:
+  type: mock
+devices:
+  - name: delta2
+    mac: AA:BB:CC:DD:EE:01
+`
+	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("load config: %v", err)
+	}
+
+	if !cfg.Web.Enable {
+		t.Fatalf("web.enable = false")
+	}
+	if cfg.Web.Listen != "127.0.0.1:8080" {
+		t.Fatalf("web.listen = %q", cfg.Web.Listen)
 	}
 }
 
