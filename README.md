@@ -9,6 +9,7 @@ This is an appliance-oriented daemon for low-RAM SBCs. It keeps runtime state in
 Implemented:
 
 - TCP NUT-like server on port `3493`
+- optional local web status/control server
 - multiple virtual UPS devices
 - direct `eco-ble` provider for modern EcoFlow power stations
 - `upsc`-style commands:
@@ -56,6 +57,12 @@ This is still an early standalone replacement, but it now includes a direct read
 go build -o ecoflow-ble-nutd ./cmd/ecoflow-ble-nutd
 ```
 
+For reproducible release bundles used by GitHub Releases:
+
+```sh
+./scripts/build-release-artifacts.sh v0.1.0
+```
+
 ## Dev Container
 
 The repo includes a `.devcontainer/` setup for Go 1.26 development with `nc` and NUT client tools installed.
@@ -88,6 +95,113 @@ Or with NUT client tools:
 upsc delta2@127.0.0.1
 ```
 
+## CI and Release
+
+This repo now expects two GitHub Actions workflows:
+
+- `CI`: runs `gofmt` checks, `go vet`, `go test ./...`, and Linux cross-builds for `amd64`, `arm64`, and `armv7`
+- `Release`: runs on tags like `v0.1.0` or manually, builds release tarballs, generates `SHA256SUMS`, and publishes a GitHub Release
+
+The release archives include:
+
+- `ecoflow-ble-nutd`
+- `ecoflow-ble-nutd.service`
+- `ecoflow-ble-nutd.conf.example`
+- `install-systemd.sh`
+- `uninstall-systemd.sh`
+- `README.md`
+- `LICENSE`
+
+Published release targets:
+
+| Artifact suffix | Linux CPU target        | Typical use case                   |
+| --------------- | ----------------------- | ---------------------------------- |
+| `linux-amd64`   | x86_64 / amd64          | PCs, servers, Intel/AMD mini PCs   |
+| `linux-arm64`   | aarch64 / arm64         | 64-bit ARM SBCs                    |
+| `linux-armv7`   | 32-bit ARMv7 hard-float | Raspberry Pi OS 32-bit class hosts |
+
+Notes:
+
+- the tarballs are for Linux only
+- the bundled install script expects a `systemd`-based Linux host
+- the `eco-ble` provider expects Linux with BlueZ and a working BLE adapter such as `hci0`
+- non-`systemd` Linux hosts can still run the binary manually, but should not use the bundled `systemd` installer
+- versioned `v*` releases are immutable; the `latest` tag and release are intentionally moved forward on each new release
+
+To cut a release from GitHub, push a tag such as:
+
+```sh
+git tag v0.1.0
+git push origin v0.1.0
+```
+
+Or run the `Release` workflow manually and pass a version starting with `v`.
+
+For automation that should always pull the newest published release, use the rolling `latest` release with stable asset names:
+
+```text
+https://github.com/xkhronoz/ecoflow-ble-nutd/releases/download/latest/ecoflow-ble-nutd-linux-amd64.tar.gz
+https://github.com/xkhronoz/ecoflow-ble-nutd/releases/download/latest/ecoflow-ble-nutd-linux-arm64.tar.gz
+https://github.com/xkhronoz/ecoflow-ble-nutd/releases/download/latest/ecoflow-ble-nutd-linux-armv7.tar.gz
+```
+
+Those `latest` asset names stay stable across releases. The versioned releases continue to use versioned filenames such as `ecoflow-ble-nutd-v0.1.0-linux-amd64.tar.gz`.
+
+## systemd install
+
+The repo includes operator scripts for installing or removing the bundled `systemd` unit on Linux hosts.
+
+Install from a local build:
+
+```sh
+go build -o ecoflow-ble-nutd ./cmd/ecoflow-ble-nutd
+sudo ./scripts/install-systemd.sh --binary ./ecoflow-ble-nutd --config ./examples/ecoflow-ble-nutd.conf
+```
+
+Install from a release tarball:
+
+```sh
+wget https://github.com/xkhronoz/ecoflow-ble-nutd/releases/download/latest/ecoflow-ble-nutd-latest-linux-amd64.tar.gz
+tar -xzf ecoflow-ble-nutd-latest-linux-amd64.tar.gz
+cd ecoflow-ble-nutd-latest-linux-amd64
+cp ecoflow-ble-nutd.conf.example ecoflow-ble-nutd.conf
+$EDITOR ecoflow-ble-nutd.conf
+sudo ./install-systemd.sh --binary ./ecoflow-ble-nutd --config ./ecoflow-ble-nutd.conf
+```
+
+The bundled `install-systemd.sh` can also auto-detect the binary, service file, and example config from the extracted release directory, so this shorter form works too:
+
+```sh
+sudo ./install-systemd.sh --config ./ecoflow-ble-nutd.conf
+```
+
+Manual install without `systemd`:
+
+```sh
+tar -xzf ecoflow-ble-nutd-v0.1.0-linux-amd64.tar.gz
+cd ecoflow-ble-nutd-v0.1.0-linux-amd64
+cp ecoflow-ble-nutd.conf.example ecoflow-ble-nutd.conf
+$EDITOR ecoflow-ble-nutd.conf
+./ecoflow-ble-nutd -config ./ecoflow-ble-nutd.conf
+```
+
+Useful flags:
+
+- `--skip-config` keeps the script from installing `/etc/ecoflow-ble-nutd.conf`
+- `--no-start` enables the service without starting it
+
+Uninstall the unit:
+
+```sh
+sudo ./scripts/uninstall-systemd.sh
+```
+
+Optionally remove the installed binary and config too:
+
+```sh
+sudo ./scripts/uninstall-systemd.sh --remove-binary --remove-config
+```
+
 ## Config format
 
 Example daemon config:
@@ -109,6 +223,9 @@ provider:
     email: user@example.com
     password: change-me
     region: auto
+web:
+  enable: true
+  listen: 127.0.0.1:8080
 devices:
   - name: delta2
     description: EcoFlow Delta 2 BLE
@@ -120,6 +237,17 @@ devices:
 ```
 
 The shipped example lives at `examples/ecoflow-ble-nutd.conf`.
+
+For the optional web server:
+
+- set `web.enable: true` to enable the local status/control UI
+- set `web.listen` to choose the bind address, for example `127.0.0.1:8080` or `0.0.0.0:8080`
+- if `web.enable` is `true` and `web.listen` is omitted, it defaults to `127.0.0.1:8080`
+- if NUT `auth.username` / `auth.password` are set, the same credentials are required as HTTP Basic auth for the web UI and API
+- `POST /api/ble/disable` pauses this daemon's BLE collector and keeps the NUT server running with `WAIT` status data
+- `POST /api/ble/enable` starts the collector again
+- `GET /api/status` returns daemon, collector, and device JSON status
+- disabling the collector does not toggle Bluetooth on the EcoFlow device itself; it only releases this daemon's BLE session
 
 For `eco-ble`:
 

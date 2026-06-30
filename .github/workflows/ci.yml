@@ -1,0 +1,62 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+      - master
+      - develop
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Test and Build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Check formatting
+        run: |
+          unformatted="$(gofmt -l $(find cmd internal -name '*.go' -print))"
+          if [ -n "${unformatted}" ]; then
+            echo "These files need gofmt:"
+            echo "${unformatted}"
+            exit 1
+          fi
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Run tests
+        run: go test ./...
+
+      - name: Cross-build Linux binaries
+        run: |
+          mkdir -p dist/ci
+          for target in "amd64" "arm64" "arm"; do
+            case "${target}" in
+              arm)
+                GOARCH=arm GOARM=7 GOOS=linux go build -trimpath -ldflags="-s -w" -o "dist/ci/ecoflow-ble-nutd-linux-armv7" ./cmd/ecoflow-ble-nutd
+                ;;
+              *)
+                GOARCH="${target}" GOOS=linux go build -trimpath -ldflags="-s -w" -o "dist/ci/ecoflow-ble-nutd-linux-${target}" ./cmd/ecoflow-ble-nutd
+                ;;
+            esac
+          done
+
+      - name: Upload CI binaries
+        uses: actions/upload-artifact@v4
+        with:
+          name: ecoflow-ble-nutd-ci-binaries
+          path: dist/ci/
