@@ -1,6 +1,10 @@
 /ecoflow-ble-nutd
 /bin/
 /dist/
+/ecoflow-ble-nutd.conf
+/.env
+/deploy/docker/ecoflow-ble-nutd.conf
+/deploy/docker/.env
 
 *.test
 *.out

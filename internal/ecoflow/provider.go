@@ -149,6 +149,7 @@ func (p *Provider) runSession(ctx context.Context, store *state.Store, device co
 	lastPacket := time.Now()
 	var lastFresh time.Time
 	isStale := true
+	var latestTelemetry Telemetry
 
 	processPacket := func(packet Packet) error {
 		if desc.SupportsTime && isTimeRequest(packet) {
@@ -181,7 +182,8 @@ func (p *Provider) runSession(ctx context.Context, store *state.Store, device co
 		}
 		lastFresh = time.Now()
 		isStale = false
-		store.Upsert(device.Name, device.Description, liveVars(device, desc, *telemetry))
+		latestTelemetry = latestTelemetry.Merge(*telemetry)
+		store.Upsert(device.Name, device.Description, liveVars(device, desc, latestTelemetry))
 		return nil
 	}
 
@@ -255,16 +257,19 @@ func (p *Provider) bootstrapSession(ctx context.Context, conn BLEConnection, raw
 		if err := conn.Write(simple.Encode(append([]byte{0x01, 0x00}, publicKey...)), true); err != nil {
 			return nil, nil, err
 		}
-		payload, err := waitForSimplePayload(ctx, rawCh, simple)
+		payload, err := waitForSimplePayload(ctx, rawCh, simple, 0x01)
 		if err != nil {
 			return nil, nil, err
 		}
-		if len(payload) < 4 {
+		if len(payload) < 3 || payload[0] != 0x01 {
 			return nil, nil, fmt.Errorf("invalid device public key response")
 		}
 		keySize := getECDHTypeSize(payload[2])
 		if keySize != 40 {
 			return nil, nil, fmt.Errorf("unsupported type7 ECDH public key size %d", keySize)
+		}
+		if len(payload) < 3+keySize {
+			return nil, nil, fmt.Errorf("invalid device public key response: got %d bytes, need %d", len(payload), 3+keySize)
 		}
 		sharedSecret, err := deriveSharedSecret(privateKey, payload[3:3+keySize])
 		if err != nil {
@@ -275,7 +280,7 @@ func (p *Provider) bootstrapSession(ctx context.Context, conn BLEConnection, raw
 		if err := conn.Write(simple.Encode([]byte{0x02}), true); err != nil {
 			return nil, nil, err
 		}
-		keyInfo, err := waitForSimplePayload(ctx, rawCh, simple)
+		keyInfo, err := waitForSimplePayload(ctx, rawCh, simple, 0x02)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -322,6 +327,7 @@ func (p *Provider) finishAuthentication(ctx context.Context, conn BLEConnection,
 				return nil, err
 			}
 			var pending []Packet
+			authenticated := false
 			for _, payload := range payloads {
 				packet, err := ParsePacket(payload, desc.XORPayload)
 				if err != nil {
@@ -331,28 +337,37 @@ func (p *Provider) finishAuthentication(ctx context.Context, conn BLEConnection,
 					if err := authErrorFromPayload(packet.Payload); err != nil {
 						return nil, err
 					}
-					return pending, nil
+					authenticated = true
+					continue
 				}
 				pending = append(pending, packet)
 			}
-			if len(pending) > 0 {
+			if authenticated || len(pending) > 0 {
 				return pending, nil
 			}
 		}
 	}
 }
 
-func waitForSimplePayload(ctx context.Context, rawCh <-chan []byte, assembler *SimplePacketAssembler) ([]byte, error) {
+func waitForSimplePayload(ctx context.Context, rawCh <-chan []byte, assembler *SimplePacketAssembler, command byte) ([]byte, error) {
 	timer := time.NewTimer(20 * time.Second)
 	defer timer.Stop()
 	for {
+		// Some devices repeat handshake replies. Drain buffered copies from
+		// earlier stages before consuming the next notification.
+		if payload, ok := assembler.Parse(nil); ok {
+			if len(payload) > 0 && payload[0] == command {
+				return payload, nil
+			}
+			continue
+		}
 		select {
 		case <-ctx.Done():
 			return nil, ctx.Err()
 		case <-timer.C:
 			return nil, fmt.Errorf("timeout waiting for handshake response")
 		case chunk := <-rawCh:
-			if payload, ok := assembler.Parse(chunk); ok {
+			if payload, ok := assembler.Parse(chunk); ok && len(payload) > 0 && payload[0] == command {
 				return payload, nil
 			}
 		}

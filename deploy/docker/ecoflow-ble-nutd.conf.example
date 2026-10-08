@@ -1,0 +1,30 @@
+# From deploy/docker, copy to ./ecoflow-ble-nutd.conf and chmod 600.
+# Edit the credentials and MAC before starting Compose.
+# These addresses are inside the container; Compose controls host exposure.
+listen: 0.0.0.0:3493
+auth:
+  username: monuser
+  password: change-me
+web:
+  enable: true
+  listen: 0.0.0.0:8080
+provider:
+  type: eco-ble
+  adapter: hci0
+  scan_timeout_seconds: 8
+  connect_timeout_seconds: 20
+  reconnect_delay_seconds: 10
+  poll_seconds: 15
+  auth:
+    user_id: ""
+    email: user@example.com
+    password: change-me
+    region: auto
+devices:
+  - name: delta3
+    description: EcoFlow DELTA 3 BLE
+    model: DELTA 3
+    mac: AA:BB:CC:DD:EE:01
+    low_battery_percent: 20
+    low_runtime_seconds: 300
+    stale_timeout_seconds: 60

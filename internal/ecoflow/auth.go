@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/xkhronoz/ecoflow-ble-nutd/internal/config"
 )
@@ -82,7 +83,7 @@ func (c *LoginClient) ResolveUserID(ctx context.Context, auth config.ProviderAut
 	req.Header.Set("Content-Type", "application/json")
 	client := c.HTTPClient
 	if client == nil {
-		client = http.DefaultClient
+		client = &http.Client{Timeout: 20 * time.Second}
 	}
 	resp, err := client.Do(req)
 	if err != nil {

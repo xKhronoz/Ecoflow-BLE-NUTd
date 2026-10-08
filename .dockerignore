@@ -1,5 +1,13 @@
-.git
-.DS_Store
-ecoflow-ble-nutd
-bin
-dist
+# Allow only build inputs so local configuration and credentials stay out
+# of the build context and image layers.
+**
+!go.mod
+!go.sum
+!LICENSE
+!cmd/
+!cmd/**
+!internal/
+!internal/**
+!deploy/
+!deploy/docker/
+!deploy/docker/Dockerfile

@@ -51,6 +51,12 @@ func (t *TinygoTransport) FindByMAC(ctx context.Context, adapterID string, mac s
 	case match := <-matches:
 		return match, nil
 	case err := <-errCh:
+		// StopScan can finish before this select consumes the queued match.
+		select {
+		case match := <-matches:
+			return match, nil
+		default:
+		}
 		if err != nil {
 			return Discovery{}, err
 		}
@@ -68,29 +74,49 @@ func (t *TinygoTransport) Connect(ctx context.Context, adapterID string, discove
 	}
 	var addr bluetooth.Address
 	addr.Set(discovery.MAC)
+	return connectWithTimeout(ctx, discovery.MAC, timeout, func() (BLEConnection, error) {
+		device, err := adapter.Connect(addr, bluetooth.ConnectionParams{})
+		if err != nil {
+			return nil, err
+		}
+		conn, err := newTinygoConnection(device)
+		if err != nil {
+			return nil, err
+		}
+		return conn, nil
+	})
+}
+
+func connectWithTimeout(ctx context.Context, mac string, timeout time.Duration, connect func() (BLEConnection, error)) (BLEConnection, error) {
+	connectCtx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+	if ctx.Err() != nil {
+		return nil, ctx.Err()
+	}
 	type result struct {
 		conn BLEConnection
 		err  error
 	}
-	ch := make(chan result, 1)
+	// An unbuffered handoff leaves exactly one owner of a successful connection.
+	ch := make(chan result)
 	go func() {
-		device, err := adapter.Connect(addr, bluetooth.ConnectionParams{})
-		if err != nil {
-			ch <- result{err: err}
-			return
+		conn, err := connect()
+		select {
+		case ch <- result{conn: conn, err: err}:
+		case <-connectCtx.Done():
+			if conn != nil {
+				_ = conn.Close()
+			}
 		}
-		conn, err := newTinygoConnection(device)
-		ch <- result{conn: conn, err: err}
 	}()
-	timer := time.NewTimer(timeout)
-	defer timer.Stop()
 	select {
-	case <-ctx.Done():
-		return nil, ctx.Err()
+	case <-connectCtx.Done():
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
+		return nil, fmt.Errorf("connect timeout for %s", mac)
 	case result := <-ch:
 		return result.conn, result.err
-	case <-timer.C:
-		return nil, fmt.Errorf("connect timeout for %s", discovery.MAC)
 	}
 }
 

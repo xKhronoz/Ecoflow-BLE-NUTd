@@ -36,7 +36,9 @@ func TestFrameAssemblers(t *testing.T) {
 		Payload: []byte("hello"),
 		DSrc:    0x01,
 		DDst:    0x01,
-		Version: 0x13,
+		// CRC-format packets have symmetric send/receive lengths. Sentinel
+		// replies are covered by TestSentinelFramesWithoutTrailingCRC.
+		Version: 0x03,
 	}
 	type testCase struct {
 		name      string

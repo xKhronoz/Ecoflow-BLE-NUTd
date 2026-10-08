@@ -26,6 +26,9 @@ var (
 func loadKeyData() ([]byte, error) {
 	keyDataOnce.Do(func() {
 		keyData, keyDataErr = base64.StdEncoding.DecodeString(keyDataBase64)
+		if keyDataErr != nil {
+			keyDataErr = fmt.Errorf("decode embedded EcoFlow key data: %w", keyDataErr)
+		}
 	})
 	return keyData, keyDataErr
 }

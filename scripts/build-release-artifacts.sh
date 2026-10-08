@@ -39,6 +39,21 @@ build_target() {
   install -m 0755 "${repo_root}/scripts/install-systemd.sh" "${stage_dir}/install-systemd.sh"
   install -m 0755 "${repo_root}/scripts/uninstall-systemd.sh" "${stage_dir}/uninstall-systemd.sh"
 
+  # Keep relative documentation links usable in the native release bundle.
+  cp -R "${repo_root}/docs" "${stage_dir}/docs"
+  mkdir -p "${stage_dir}/deploy/docker" "${stage_dir}/examples" \
+    "${stage_dir}/scripts" "${stage_dir}/systemd"
+  install -m 0644 "${repo_root}/deploy/README.md" "${stage_dir}/deploy/README.md"
+  for file in README.md Dockerfile compose.yaml ecoflow-ble-nutd.conf.example .env.example; do
+    install -m 0644 "${repo_root}/deploy/docker/${file}" "${stage_dir}/deploy/docker/${file}"
+  done
+  install -m 0755 "${repo_root}/deploy/docker/test-image.sh" "${stage_dir}/deploy/docker/test-image.sh"
+  install -m 0644 "${repo_root}/examples/ecoflow-ble-nutd.conf" "${stage_dir}/examples/ecoflow-ble-nutd.conf"
+  install -m 0644 "${repo_root}/examples/delta2.json" "${stage_dir}/examples/delta2.json"
+  install -m 0644 "${repo_root}/systemd/ecoflow-ble-nutd.service" "${stage_dir}/systemd/ecoflow-ble-nutd.service"
+  install -m 0755 "${repo_root}/scripts/install-systemd.sh" "${stage_dir}/scripts/install-systemd.sh"
+  install -m 0755 "${repo_root}/scripts/uninstall-systemd.sh" "${stage_dir}/scripts/uninstall-systemd.sh"
+
   tar -C "${dist_dir}" -czf "${dist_dir}/ecoflow-ble-nutd-${version}-linux-${suffix}.tar.gz" \
     "ecoflow-ble-nutd-${version}-linux-${suffix}"
   rm -rf "${stage_dir}"

@@ -123,3 +123,18 @@ func TestProviderManagerRetriesAfterFailure(t *testing.T) {
 		t.Fatalf("unexpected status after retry: %#v", status)
 	}
 }
+
+func TestProviderManagerDoesNotStartAfterDisable(t *testing.T) {
+	manager := NewProviderManager(testConfig(), state.New())
+	called := false
+	manager.newRun = func(cfg *config.Config) Runner {
+		called = true
+		return fakeRunner{run: func(context.Context, *state.Store) error { return nil }}
+	}
+	// Run may have checked Enabled just before the web control disables it.
+	manager.Disable()
+	_ = manager.runActive(context.Background())
+	if called || manager.Status().Enabled {
+		t.Fatalf("disabled provider was started: called = %v, status = %#v", called, manager.Status())
+	}
+}

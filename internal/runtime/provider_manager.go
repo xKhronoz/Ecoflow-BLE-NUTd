@@ -78,17 +78,10 @@ func (m *ProviderManager) Run(ctx context.Context) error {
 			m.setStopped()
 			return nil
 		}
-		if !m.isEnabled() {
-			m.transition(false, false, "disabled", "", time.Time{})
+		provider.MarkDevicesWaiting(m.store, m.cfg.Devices)
+		if !m.setRetrying(err) {
 			continue
 		}
-
-		if err == nil || errors.Is(err, context.Canceled) {
-			err = fmt.Errorf("provider stopped unexpectedly")
-		}
-		now := time.Now()
-		m.transition(true, false, "retrying", err.Error(), now)
-		provider.MarkDevicesWaiting(m.store, m.cfg.Devices)
 
 		if err := m.waitForWake(ctx, m.retryDelay()); err != nil {
 			m.setStopped()
@@ -143,9 +136,13 @@ func (m *ProviderManager) Status() ProviderStatus {
 
 func (m *ProviderManager) runActive(ctx context.Context) error {
 	runCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
 	m.mu.Lock()
+	if !m.status.Enabled || ctx.Err() != nil {
+		m.mu.Unlock()
+		return context.Canceled
+	}
 	m.runCancel = cancel
-	m.status.Enabled = true
 	m.status.Running = true
 	m.status.State = "running"
 	m.status.UpdatedAt = time.Now()
@@ -207,15 +204,24 @@ func (m *ProviderManager) signalWake() {
 	}
 }
 
-func (m *ProviderManager) transition(enabled, running bool, state, lastError string, lastErrorAt time.Time) {
+func (m *ProviderManager) setRetrying(err error) bool {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	m.status.Enabled = enabled
-	m.status.Running = running
-	m.status.State = state
-	m.status.LastError = lastError
-	m.status.LastErrorAt = lastErrorAt
+	m.status.Running = false
+	if !m.status.Enabled {
+		m.status.State = "disabled"
+		m.status.LastError = ""
+		m.status.LastErrorAt = time.Time{}
+	} else {
+		if err == nil || errors.Is(err, context.Canceled) {
+			err = fmt.Errorf("provider stopped unexpectedly")
+		}
+		m.status.State = "retrying"
+		m.status.LastError = err.Error()
+		m.status.LastErrorAt = time.Now()
+	}
 	m.status.UpdatedAt = time.Now()
+	return m.status.Enabled
 }
 
 func (m *ProviderManager) setStopped() {

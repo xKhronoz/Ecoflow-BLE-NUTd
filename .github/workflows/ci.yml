@@ -60,3 +60,19 @@ jobs:
         with:
           name: ecoflow-ble-nutd-ci-binaries
           path: dist/ci/
+
+  container:
+    name: Production Container
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Validate Compose configuration
+        run: ECOFLOW_CONFIG=./ecoflow-ble-nutd.conf.example docker compose -f deploy/docker/compose.yaml config --quiet
+
+      - name: Build production image
+        run: docker build --file deploy/docker/Dockerfile --tag ecoflow-ble-nutd:ci .
+
+      - name: Smoke-test production image
+        run: ./deploy/docker/test-image.sh ecoflow-ble-nutd:ci

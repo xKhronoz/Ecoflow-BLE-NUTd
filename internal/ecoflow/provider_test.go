@@ -4,14 +4,17 @@ import (
 	"bytes"
 	"context"
 	"encoding/binary"
+	"encoding/hex"
 	"fmt"
 	"net/http"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/xkhronoz/ecoflow-ble-nutd/internal/config"
+	"github.com/xkhronoz/ecoflow-ble-nutd/internal/ecoflow/pb/pd335pb"
 	"github.com/xkhronoz/ecoflow-ble-nutd/internal/ecoflow/pb/pr705pb"
 	"github.com/xkhronoz/ecoflow-ble-nutd/internal/state"
 	"google.golang.org/protobuf/proto"
@@ -298,6 +301,180 @@ func TestRunSessionRejectsUnsupportedSerialPrefix(t *testing.T) {
 	err := provider.runSession(context.Background(), state.New(), device, "user-123", "user_id")
 	if err == nil {
 		t.Fatalf("expected unsupported serial error")
+	}
+}
+
+func TestBootstrapRejectsShortPublicKeyReply(t *testing.T) {
+	p := NewProvider(&config.Config{})
+	raw := make(chan []byte, 1)
+	raw <- (&SimplePacketAssembler{}).Encode([]byte{1, 0, 0, 1})
+	_, _, err := p.bootstrapSession(context.Background(), &fakeConn{}, raw, DeviceDescriptor{EncryptType: 7}, "user")
+	if err == nil || !strings.Contains(err.Error(), "public key response") {
+		t.Fatalf("expected short public key error, got %v", err)
+	}
+}
+
+func TestFinishAuthenticationPreservesFollowingTelemetry(t *testing.T) {
+	p := NewProvider(&config.Config{Provider: config.ProviderCfg{ConnectTimeoutSeconds: 1}})
+	raw := make(chan []byte, 1)
+	reply := Packet{Src: 0x35, CmdSet: 0x35, CmdID: 0x86, Payload: []byte{0}, Version: 2}.MarshalBinary()
+	raw <- append(reply, makeV2TelemetryPacket(74, 1800, 120, 85)...)
+	pending, err := p.finishAuthentication(context.Background(), &fakeConn{}, raw, DeviceDescriptor{PacketVersion: 2}, "user", &PassthroughAssembler{})
+	if err != nil || len(pending) != 1 || pending[0].CmdSet != 0x20 {
+		t.Fatalf("pending packets = %#v, error = %v", pending, err)
+	}
+}
+
+func TestBootstrapType7Delta3(t *testing.T) {
+	p := NewProvider(&config.Config{Provider: config.ProviderCfg{ConnectTimeoutSeconds: 1}})
+	desc, err := resolveDescriptor(makeDiscovery("AA:BB:CC:DD:EE:FF", "P231FAB4PJ7X3193", 7))
+	if err != nil {
+		t.Fatal(err)
+	}
+	devicePrivate, devicePublic, err := generateSECP160KeyPair()
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw := make(chan []byte, 16)
+	conn := &fakeConn{}
+	_ = conn.StartNotifications(func(data []byte) { raw <- data })
+	simple := &SimplePacketAssembler{}
+	var initialEncryption Type7Encryption
+	var sessionAssembler *EncPacketAssembler
+	step := 0
+	conn.writeHook = func(c *fakeConn, data []byte, withResponse bool) error {
+		step++
+		if !withResponse {
+			t.Fatal("type7 handshake must write with response")
+		}
+		switch step {
+		case 1:
+			command, ok := simple.Parse(data)
+			if !ok || len(command) != 42 || command[0] != 1 {
+				t.Fatalf("public key request = %x", command)
+			}
+			shared, err := deriveSharedSecret(devicePrivate, command[2:])
+			if err != nil {
+				t.Fatal(err)
+			}
+			key, iv := type7SessionSeed(shared)
+			initialEncryption = Type7Encryption{SessionKey: key, IV: iv}
+			reply := simple.Encode(append([]byte{1, 0, 0}, devicePublic...))
+			reply = append(reply, reply...) // Repeated replies must not confuse the next stage.
+			c.emit(reply[:1])
+			c.emit(reply[1:])
+		case 2:
+			command, ok := simple.Parse(data)
+			if !ok || !bytes.Equal(command, []byte{2}) {
+				t.Fatalf("session key request = %x", command)
+			}
+			keyInfo := make([]byte, 18)
+			for i := range 16 {
+				keyInfo[i] = byte(i)
+			}
+			keyInfo[17] = 1
+			encrypted, err := initialEncryption.Encrypt(keyInfo)
+			if err != nil {
+				t.Fatal(err)
+			}
+			c.emit(simple.Encode(append([]byte{2}, encrypted...)))
+			// Independent expected vector for seed 0001 and srand 000102...0f.
+			key, _ := hex.DecodeString("cf19aab35c7605235e885521945354d8")
+			sessionAssembler = &EncPacketAssembler{encryption: Type7Encryption{SessionKey: key, IV: initialEncryption.IV}}
+		case 3, 4:
+			payloads, err := sessionAssembler.Reassemble(data)
+			if err != nil || len(payloads) != 1 {
+				t.Fatalf("authentication request payloads = %x, %v", payloads, err)
+			}
+			request, err := ParsePacket(payloads[0], false)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if step == 3 && request.CmdID != 0x89 {
+				t.Fatalf("expected auth status request, got %#v", request)
+			}
+			if step == 4 {
+				if request.CmdID != 0x86 || !bytes.Equal(request.Payload, authPacket(desc, "user").Payload) {
+					t.Fatalf("unexpected auth request: %#v", request)
+				}
+				reply, err := sessionAssembler.Encode(Packet{Src: 0x35, CmdSet: 0x35, CmdID: 0x86, Payload: []byte{0}, Version: 0x03})
+				if err != nil {
+					t.Fatal(err)
+				}
+				charge := float32(74)
+				telemetryPayload, err := proto.Marshal(&pd335pb.DisplayPropertyUpload{CmsBattSoc: &charge})
+				if err != nil {
+					t.Fatal(err)
+				}
+				telemetry, err := sessionAssembler.Encode(Packet{Src: 2, CmdSet: 0xfe, CmdID: 0x15, Payload: telemetryPayload, Version: 0x03})
+				if err != nil {
+					t.Fatal(err)
+				}
+				c.emit(append(reply, telemetry...))
+			}
+		default:
+			t.Fatalf("unexpected handshake step %d", step)
+		}
+		return nil
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	assembler, pending, err := p.bootstrapSession(ctx, conn, raw, desc, "user")
+	if err != nil || assembler == nil || len(pending) != 1 || step != 4 {
+		t.Fatalf("handshake: steps = %d, pending = %#v, error = %v", step, pending, err)
+	}
+	telemetry, _, handled, err := newHandler(desc.Profile).HandlePacket(pending[0])
+	if err != nil || !handled || telemetry == nil || telemetry.Charge == nil || *telemetry.Charge != 74 {
+		t.Fatalf("DELTA 3 telemetry = %#v, error = %v", telemetry, err)
+	}
+}
+
+func TestRunSessionRetainsPartialTelemetry(t *testing.T) {
+	cfg := &config.Config{Provider: config.ProviderCfg{ConnectTimeoutSeconds: 1, PollSeconds: 1}}
+	device := config.Device{Name: "delta3", MAC: "AA:BB:CC:DD:EE:FF", StaleTimeoutSeconds: 60}
+	conn := &fakeConn{}
+	conn.writeHook = func(c *fakeConn, data []byte, _ bool) error {
+		request, err := ParsePacket(data, false)
+		if err != nil {
+			return err
+		}
+		if request.CmdID == 0x86 {
+			c.emit(makeV3TelemetryPacket(74, 1800, 120, 85))
+		}
+		return nil
+	}
+	p := NewProvider(cfg)
+	p.transport = &fakeTransport{
+		discoveries: map[string]Discovery{device.MAC: makeDiscovery(device.MAC, "P231FAB4PJ7X3193", 0)},
+		connections: map[string][]*fakeConn{device.MAC: {conn}},
+	}
+	store := state.New()
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- p.runSession(ctx, store, device, "user", "user_id") }()
+	defer func() {
+		cancel()
+		if err := <-done; err != nil {
+			t.Error(err)
+		}
+	}()
+	waitForCondition(t, time.Second, func() bool {
+		u, ok := store.Get(device.Name)
+		return ok && u.Vars["battery.charge"] == "74"
+	})
+	output := float32(42)
+	payload, err := proto.Marshal(&pd335pb.DisplayPropertyUpload{PowOutSumW: &output})
+	if err != nil {
+		t.Fatal(err)
+	}
+	conn.emit(Packet{Src: 2, CmdSet: 0xfe, CmdID: 0x15, Payload: payload, Version: 0x03}.MarshalBinary())
+	waitForCondition(t, time.Second, func() bool {
+		u, ok := store.Get(device.Name)
+		return ok && u.Vars["output.power"] == "42"
+	})
+	u, _ := store.Get(device.Name)
+	if u.Vars["ups.status"] != "OL" || u.Vars["battery.charge"] != "74" || u.Vars["battery.runtime"] != "1800" || u.Vars["input.power"] != "120" {
+		t.Fatalf("partial telemetry discarded prior state: %#v", u.Vars)
 	}
 }
 
