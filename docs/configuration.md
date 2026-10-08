@@ -53,6 +53,8 @@ For the optional web server:
 - `GET /api/status` returns daemon, collector, and device JSON status
 - disabling the collector does not toggle Bluetooth on the EcoFlow device itself; it only releases this daemon's BLE session
 
+The Enable and Disable buttons send requests in the background, show an inline result, and update the collector and device status without leaving the page. While the page is visible, status refreshes every five seconds. Green badges indicate active states, red indicates inactive states, and amber indicates starting, stopping, or retrying; the text labels remain visible.
+
 ## BLE provider
 
 For `eco-ble`:
