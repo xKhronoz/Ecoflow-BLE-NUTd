@@ -1,4 +1,4 @@
-# ecoflow-ble-nutd
+# Ecoflow-BLE-NUTd
 
 A small NUT-compatible daemon that exposes EcoFlow power stations as virtual UPS devices over local Bluetooth LE.
 
