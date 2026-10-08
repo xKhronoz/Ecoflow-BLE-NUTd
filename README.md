@@ -38,6 +38,8 @@ The `mock` and `json-dir` providers allow development without BLE hardware. See 
 
 Browse the [documentation index](docs/README.md) or [deployment index](deploy/README.md). Authentication errors, including the earlier embedded Base64 key-data issue, are covered in [BLE troubleshooting](docs/ble-authentication.md#authentication-troubleshooting).
 
+Read the [security policy](SECURITY.md) for vulnerability reporting, trust boundaries, and known protocol limitations.
+
 ## Credits and license
 
 The BLE implementation is informed by the public protocol and interoperability research in [`rabits/ha-ef-ble`](https://github.com/rabits/ha-ef-ble), including manufacturer data, session authentication, framing, device families, and telemetry structures.

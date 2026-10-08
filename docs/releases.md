@@ -14,7 +14,7 @@ The release archives include:
 - `ecoflow-ble-nutd.conf.example`
 - `install-systemd.sh`
 - `uninstall-systemd.sh`
-- `README.md`, `docs/`, and deployment guides under `deploy/`
+- `README.md`, `SECURITY.md`, `docs/`, and deployment guides under `deploy/`
 - source-layout examples and native installer/service files for documentation links
 - `LICENSE`
 

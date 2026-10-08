@@ -12,3 +12,4 @@
 | [NUT protocol](nut-protocol.md) | Variable mapping, supported commands, and compatibility limits |
 | [Development](development.md) | Local builds, dev container, tests, and container verification |
 | [Releases](releases.md) | CI, architecture targets, release assets, and release procedure |
+| [Security policy](../SECURITY.md) | Vulnerability reporting, trust boundaries, review criteria, and known limitations |

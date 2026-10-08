@@ -33,6 +33,7 @@ build_target() {
   fi
 
   install -m 0644 "${repo_root}/README.md" "${stage_dir}/README.md"
+  install -m 0644 "${repo_root}/SECURITY.md" "${stage_dir}/SECURITY.md"
   install -m 0644 "${repo_root}/LICENSE" "${stage_dir}/LICENSE"
   install -m 0644 "${repo_root}/examples/ecoflow-ble-nutd.conf" "${stage_dir}/ecoflow-ble-nutd.conf.example"
   install -m 0644 "${repo_root}/systemd/ecoflow-ble-nutd.service" "${stage_dir}/ecoflow-ble-nutd.service"
