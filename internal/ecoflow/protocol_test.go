@@ -70,7 +70,7 @@ func TestFrameAssemblers(t *testing.T) {
 			if len(payloads) != 1 {
 				t.Fatalf("payloads = %d", len(payloads))
 			}
-			if !bytes.Equal(payloads[0], packet.MarshalBinary()) {
+			if !bytes.Equal(payloads[0], mustEncode(packet.MarshalBinary())) {
 				t.Fatalf("decoded packet mismatch")
 			}
 		})

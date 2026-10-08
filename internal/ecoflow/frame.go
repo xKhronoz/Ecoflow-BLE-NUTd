@@ -23,7 +23,10 @@ func (e Type7Encryption) Encrypt(plaintext []byte) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	plaintext = pkcs7Pad(plaintext, aes.BlockSize)
+	plaintext, err = pkcs7Pad(plaintext, aes.BlockSize)
+	if err != nil {
+		return nil, err
+	}
 	out := make([]byte, len(plaintext))
 	cipher.NewCBCEncrypter(block, e.IV).CryptBlocks(out, plaintext)
 	return out, nil
@@ -52,6 +55,9 @@ type Type1Encryption struct {
 }
 
 func (e Type1Encryption) Encrypt(plaintext []byte) ([]byte, error) {
+	if len(plaintext) > maxPacketSize {
+		return nil, fmt.Errorf("plaintext too large: %d bytes, maximum %d", len(plaintext), maxPacketSize)
+	}
 	block, err := aes.NewCipher(e.SessionKey)
 	if err != nil {
 		return nil, err
@@ -91,15 +97,17 @@ type EncPacketAssembler struct {
 func (a *EncPacketAssembler) WriteWithResponse() bool { return true }
 
 func (a *EncPacketAssembler) Encode(pkt Packet) ([]byte, error) {
-	payload := pkt.MarshalBinary()
+	payload, err := pkt.MarshalBinary()
+	if err != nil {
+		return nil, err
+	}
 	if a.encryption != nil {
-		var err error
 		payload, err = a.encryption.Encrypt(payload)
 		if err != nil {
 			return nil, err
 		}
 	}
-	return EncPacket{FrameType: 0x01, PayloadType: 0x00, Payload: payload}.MarshalBinary(), nil
+	return EncPacket{FrameType: 0x01, PayloadType: 0x00, Payload: payload}.MarshalBinary()
 }
 
 func (a *EncPacketAssembler) Reassemble(data []byte) ([][]byte, error) {
@@ -159,7 +167,7 @@ type PassthroughAssembler struct {
 func (a *PassthroughAssembler) WriteWithResponse() bool { return false }
 
 func (a *PassthroughAssembler) Encode(pkt Packet) ([]byte, error) {
-	return pkt.MarshalBinary(), nil
+	return pkt.MarshalBinary()
 }
 
 func (a *PassthroughAssembler) Reassemble(data []byte) ([][]byte, error) {
@@ -203,7 +211,10 @@ type RawHeaderAssembler struct {
 func (a *RawHeaderAssembler) WriteWithResponse() bool { return false }
 
 func (a *RawHeaderAssembler) Encode(pkt Packet) ([]byte, error) {
-	raw := pkt.MarshalBinary()
+	raw, err := pkt.MarshalBinary()
+	if err != nil {
+		return nil, err
+	}
 	encrypted, err := a.encryption.Encrypt(raw[5:])
 	if err != nil {
 		return nil, err
@@ -273,7 +284,7 @@ type SimplePacketAssembler struct {
 	buffer []byte
 }
 
-func (a *SimplePacketAssembler) Encode(payload []byte) []byte {
+func (a *SimplePacketAssembler) Encode(payload []byte) ([]byte, error) {
 	return EncPacket{FrameType: 0x00, PayloadType: 0x00, Payload: payload}.MarshalBinary()
 }
 
@@ -317,17 +328,22 @@ func (a *SimplePacketAssembler) Parse(data []byte) ([]byte, bool) {
 	return nil, false
 }
 
-func pkcs7Pad(src []byte, blockSize int) []byte {
-	pad := blockSize - (len(src) % blockSize)
-	if pad == 0 {
-		pad = blockSize
+func pkcs7Pad(src []byte, blockSize int) ([]byte, error) {
+	if blockSize < 1 || blockSize > 255 {
+		return nil, fmt.Errorf("invalid pkcs7 block size %d", blockSize)
 	}
+	// Only EcoFlow packets and handshake messages are encrypted. Bound the
+	// input before adding padding, including on 32-bit ARM hosts.
+	if len(src) > maxPacketSize {
+		return nil, fmt.Errorf("plaintext too large: %d bytes, maximum %d", len(src), maxPacketSize)
+	}
+	pad := blockSize - (len(src) % blockSize)
 	out := make([]byte, len(src)+pad)
 	copy(out, src)
 	for i := len(src); i < len(out); i++ {
 		out[i] = byte(pad)
 	}
-	return out
+	return out, nil
 }
 
 func pkcs7Unpad(src []byte, blockSize int) ([]byte, error) {

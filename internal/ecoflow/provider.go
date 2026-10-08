@@ -254,7 +254,11 @@ func (p *Provider) bootstrapSession(ctx context.Context, conn BLEConnection, raw
 		if err != nil {
 			return nil, nil, err
 		}
-		if err := conn.Write(simple.Encode(append([]byte{0x01, 0x00}, publicKey...)), true); err != nil {
+		publicKeyRequest, err := simple.Encode(append([]byte{0x01, 0x00}, publicKey...))
+		if err != nil {
+			return nil, nil, err
+		}
+		if err := conn.Write(publicKeyRequest, true); err != nil {
 			return nil, nil, err
 		}
 		payload, err := waitForSimplePayload(ctx, rawCh, simple, 0x01)
@@ -277,7 +281,11 @@ func (p *Provider) bootstrapSession(ctx context.Context, conn BLEConnection, raw
 		}
 		initialKey, iv := type7SessionSeed(sharedSecret)
 		tempEnc := Type7Encryption{SessionKey: initialKey, IV: iv}
-		if err := conn.Write(simple.Encode([]byte{0x02}), true); err != nil {
+		keyInfoRequest, err := simple.Encode([]byte{0x02})
+		if err != nil {
+			return nil, nil, err
+		}
+		if err := conn.Write(keyInfoRequest, true); err != nil {
 			return nil, nil, err
 		}
 		keyInfo, err := waitForSimplePayload(ctx, rawCh, simple, 0x02)
@@ -395,6 +403,8 @@ func authStatusPacket(desc DeviceDescriptor) Packet {
 }
 
 func authPacket(desc DeviceDescriptor, userID string) Packet {
+	// EcoFlow firmware expects the uppercase MD5 of user ID plus serial.
+	// Changing this protocol token to a stronger hash breaks authentication.
 	sum := md5.Sum([]byte(userID + desc.Serial))
 	payload := strings.ToUpper(hex.EncodeToString(sum[:]))
 	return Packet{

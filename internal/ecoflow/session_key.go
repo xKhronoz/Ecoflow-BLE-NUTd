@@ -60,6 +60,8 @@ func deriveSharedSecret(privateKey []byte, devicePubKey []byte) ([]byte, error) 
 }
 
 func type7SessionSeed(sharedSecret []byte) (sessionKey []byte, iv []byte) {
+	// EcoFlow type 7 requires MD5(sharedSecret) as the CBC IV. This is a
+	// firmware protocol constraint; SHA-256 would derive a different IV.
 	sum := md5.Sum(sharedSecret)
 	return append([]byte(nil), sharedSecret[:16]...), sum[:]
 }
@@ -81,11 +83,14 @@ func deriveFinalSessionKey(seed []byte, srand []byte) ([]byte, error) {
 	copy(data[8:16], keyData[pos+8:pos+16])
 	copy(data[16:24], srand[:8])
 	copy(data[24:32], srand[8:16])
+	// This MD5 derivation is also mandated by the EcoFlow type 7 protocol.
 	sum := md5.Sum(data)
 	return sum[:], nil
 }
 
 func type1Session(serial string) (sessionKey []byte, iv []byte) {
+	// Legacy type 1 firmware derives its key and IV from these MD5 digests.
+	// They must remain unchanged for device interoperability.
 	keySum := md5.Sum([]byte(serial))
 	reversed := []byte(serial)
 	for i, j := 0, len(reversed)-1; i < j; i, j = i+1, j-1 {

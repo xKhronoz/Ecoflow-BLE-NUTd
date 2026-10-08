@@ -307,7 +307,7 @@ func TestRunSessionRejectsUnsupportedSerialPrefix(t *testing.T) {
 func TestBootstrapRejectsShortPublicKeyReply(t *testing.T) {
 	p := NewProvider(&config.Config{})
 	raw := make(chan []byte, 1)
-	raw <- (&SimplePacketAssembler{}).Encode([]byte{1, 0, 0, 1})
+	raw <- mustEncode((&SimplePacketAssembler{}).Encode([]byte{1, 0, 0, 1}))
 	_, _, err := p.bootstrapSession(context.Background(), &fakeConn{}, raw, DeviceDescriptor{EncryptType: 7}, "user")
 	if err == nil || !strings.Contains(err.Error(), "public key response") {
 		t.Fatalf("expected short public key error, got %v", err)
@@ -317,7 +317,7 @@ func TestBootstrapRejectsShortPublicKeyReply(t *testing.T) {
 func TestFinishAuthenticationPreservesFollowingTelemetry(t *testing.T) {
 	p := NewProvider(&config.Config{Provider: config.ProviderCfg{ConnectTimeoutSeconds: 1}})
 	raw := make(chan []byte, 1)
-	reply := Packet{Src: 0x35, CmdSet: 0x35, CmdID: 0x86, Payload: []byte{0}, Version: 2}.MarshalBinary()
+	reply := mustEncode(Packet{Src: 0x35, CmdSet: 0x35, CmdID: 0x86, Payload: []byte{0}, Version: 2}.MarshalBinary())
 	raw <- append(reply, makeV2TelemetryPacket(74, 1800, 120, 85)...)
 	pending, err := p.finishAuthentication(context.Background(), &fakeConn{}, raw, DeviceDescriptor{PacketVersion: 2}, "user", &PassthroughAssembler{})
 	if err != nil || len(pending) != 1 || pending[0].CmdSet != 0x20 {
@@ -359,7 +359,7 @@ func TestBootstrapType7Delta3(t *testing.T) {
 			}
 			key, iv := type7SessionSeed(shared)
 			initialEncryption = Type7Encryption{SessionKey: key, IV: iv}
-			reply := simple.Encode(append([]byte{1, 0, 0}, devicePublic...))
+			reply := mustEncode(simple.Encode(append([]byte{1, 0, 0}, devicePublic...)))
 			reply = append(reply, reply...) // Repeated replies must not confuse the next stage.
 			c.emit(reply[:1])
 			c.emit(reply[1:])
@@ -377,7 +377,7 @@ func TestBootstrapType7Delta3(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			c.emit(simple.Encode(append([]byte{2}, encrypted...)))
+			c.emit(mustEncode(simple.Encode(append([]byte{2}, encrypted...))))
 			// Independent expected vector for seed 0001 and srand 000102...0f.
 			key, _ := hex.DecodeString("cf19aab35c7605235e885521945354d8")
 			sessionAssembler = &EncPacketAssembler{encryption: Type7Encryption{SessionKey: key, IV: initialEncryption.IV}}
@@ -467,7 +467,7 @@ func TestRunSessionRetainsPartialTelemetry(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	conn.emit(Packet{Src: 2, CmdSet: 0xfe, CmdID: 0x15, Payload: payload, Version: 0x03}.MarshalBinary())
+	conn.emit(mustEncode(Packet{Src: 2, CmdSet: 0xfe, CmdID: 0x15, Payload: payload, Version: 0x03}.MarshalBinary()))
 	waitForCondition(t, time.Second, func() bool {
 		u, ok := store.Get(device.Name)
 		return ok && u.Vars["output.power"] == "42"
@@ -498,14 +498,14 @@ func makeV2TelemetryPacket(charge int, runtime int32, inputPower uint16, outputP
 		WattsOutSum: outputPower,
 		RemainTime:  runtime,
 	})
-	return Packet{
+	return mustEncode(Packet{
 		Src:     0x02,
 		Dst:     0x21,
 		CmdSet:  0x20,
 		CmdID:   0x02,
 		Payload: payload,
 		Version: 0x02,
-	}.MarshalBinary()
+	}.MarshalBinary())
 }
 
 func makeV3TelemetryPacket(charge int, runtime uint32, input float32, output float32) []byte {
@@ -520,7 +520,7 @@ func makeV3TelemetryPacket(charge int, runtime uint32, input float32, output flo
 	if err != nil {
 		panic(err)
 	}
-	return Packet{
+	return mustEncode(Packet{
 		Src:     0x02,
 		Dst:     0x20,
 		CmdSet:  0xFE,
@@ -529,7 +529,7 @@ func makeV3TelemetryPacket(charge int, runtime uint32, input float32, output flo
 		DSrc:    0x01,
 		DDst:    0x01,
 		Version: 0x13,
-	}.MarshalBinary()
+	}.MarshalBinary())
 }
 
 func mustBinary[T any](value T) []byte {

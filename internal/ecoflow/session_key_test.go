@@ -44,3 +44,19 @@ func TestDeriveFinalSessionKey(t *testing.T) {
 		t.Fatal("expected error for short srand")
 	}
 }
+
+func TestProtocolSessionDerivationVectors(t *testing.T) {
+	// Fixed vectors protect the MD5 derivations mandated by EcoFlow firmware.
+	shared := make([]byte, 20)
+	for i := range shared {
+		shared[i] = byte(i)
+	}
+	key, iv := type7SessionSeed(shared)
+	if hex.EncodeToString(key) != "000102030405060708090a0b0c0d0e0f" || hex.EncodeToString(iv) != "1549d1aae20214e065ab4b76aaac89a8" {
+		t.Fatalf("type 7 protocol vector changed: key=%x, iv=%x", key, iv)
+	}
+	key, iv = type1Session("P231FAB4PJ7X3193")
+	if hex.EncodeToString(key) != "3e819efdbcc2f698a23c1504182bd64b" || hex.EncodeToString(iv) != "0668bde719e434fce51e78dfe7d6963a" {
+		t.Fatalf("type 1 protocol vector changed: key=%x, iv=%x", key, iv)
+	}
+}

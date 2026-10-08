@@ -54,6 +54,12 @@ To obtain the BLE `mac` address:
 
 Use that address as `devices[].mac` in the config.
 
+## Protocol cryptography
+
+EcoFlow's BLE protocol requires MD5 for the type 7 IV and session-key derivation, the type 1 key and IV, and the user-ID authentication token. These operations match the [reference BLE implementation](https://github.com/rabits/ha-ef-ble/blob/main/custom_components/ef_ble/eflib/connection.py). Replacing MD5 with SHA-256 locally would change the bytes expected by the device and break authentication.
+
+MD5 remains a weak cryptographic primitive. Its use here is a device-protocol constraint that maintainers must assess when reviewing CodeQL alerts; compatibility does not make the protocol cryptographically strong. The daemon does not use these functions as a password-storage mechanism.
+
 ## Authentication troubleshooting
 
 If a build reports `illegal base64 data at input byte 99` during type 7 authentication, it contains a malformed embedded key-data file from an earlier revision. Update the source, rebuild the binary or Docker image, and restart the service or recreate the container using that build. The key table is embedded at compile time, so editing a file inside an existing container will not update the running binary.
