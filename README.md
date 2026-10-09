@@ -40,8 +40,20 @@ Browse the [documentation index](docs/README.md) or [deployment index](deploy/RE
 
 Read the [security policy](SECURITY.md) for vulnerability reporting, trust boundaries, and known protocol limitations.
 
-## Credits and license
+## Support & Warranty
+
+For setup questions and community help, use [GitHub Discussions](https://github.com/xKhronoz/Ecoflow-BLE-NUTd/discussions). Report reproducible bugs and feature requests through [GitHub Issues](https://github.com/xKhronoz/Ecoflow-BLE-NUTd/issues). Include the release or commit, device model and firmware version, host platform, deployment method, and relevant logs.
+
+Remove passwords, user IDs, tokens, device serials, and MAC addresses from shared logs and configuration. Report security vulnerabilities through the [security policy](SECURITY.md).
+
+Support is provided by the community on a best-effort basis, with no guaranteed response or resolution time. The software is provided without warranty to the extent permitted by applicable law; see sections 15–17 of [LICENSE](LICENSE) for the warranty disclaimer and liability terms. Direct hardware warranty questions to EcoFlow or your retailer.
+
+## Legal
+
+Ecoflow-BLE-NUTd is an independent, unofficial project and is not affiliated with, sponsored by, or endorsed by EcoFlow. EcoFlow and other product names and trademarks belong to their respective owners and are used here to identify compatible devices and software.
+
+This project is licensed under GNU GPL v3. See [LICENSE](LICENSE) for the full terms. When redistributing, comply with the license requirements for notices, licensing, and corresponding source, and preserve the upstream attribution and license notices. These software terms do not define the manufacturer's hardware warranty; consult EcoFlow or your retailer for those terms.
+
+## Credits
 
 The BLE implementation is informed by the public protocol and interoperability research in [`rabits/ha-ef-ble`](https://github.com/rabits/ha-ef-ble), including manufacturer data, session authentication, framing, device families, and telemetry structures.
-
-This project is licensed under GNU GPL v3. See [LICENSE](LICENSE). Preserve the upstream attribution and license notices when redistributing.
