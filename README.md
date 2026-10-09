@@ -6,11 +6,11 @@ It runs on Linux with BlueZ, keeps runtime state in memory, and supports low-RAM
 
 ## Get started
 
-| Task | Guide |
-| --- | --- |
-| Deploy with Docker Compose | [Docker deployment](deploy/docker/README.md) |
-| Install a native binary or systemd service | [Native deployment](docs/deployment.md) |
-| Configure the daemon and web UI | [Configuration](docs/configuration.md) |
+| Task                                         | Guide                                            |
+| -------------------------------------------- | ------------------------------------------------ |
+| Deploy with Docker Compose                   | [Docker deployment](deploy/docker/README.md)     |
+| Install a native binary or systemd service   | [Native deployment](docs/deployment.md)          |
+| Configure the daemon and web UI              | [Configuration](docs/configuration.md)           |
 | Find the EcoFlow user ID and BLE MAC address | [BLE authentication](docs/ble-authentication.md) |
 
 Use the EcoFlow app account associated with the device. A Developer account is not required. Docker setup is under [`deploy/docker/`](deploy/docker/README.md); native installation scripts and service files remain under `scripts/` and `systemd/`.
@@ -36,7 +36,7 @@ The `mock` and `json-dir` providers allow development without BLE hardware. See 
 
 ## Documentation
 
-Browse the [documentation index](docs/README.md) or [deployment index](deploy/README.md). Authentication errors, including the earlier embedded Base64 key-data issue, are covered in [BLE troubleshooting](docs/ble-authentication.md#authentication-troubleshooting).
+Browse the [documentation index](docs/README.md) or [deployment index](deploy/README.md). Authentication errors, are covered in [BLE troubleshooting](docs/ble-authentication.md#authentication-troubleshooting).
 
 Read the [security policy](SECURITY.md) for vulnerability reporting, trust boundaries, and known protocol limitations.
 

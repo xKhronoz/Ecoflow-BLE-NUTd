@@ -62,8 +62,12 @@ MD5 remains a weak cryptographic primitive. Its use here is a device-protocol co
 
 ## Authentication troubleshooting
 
-If a build reports `illegal base64 data at input byte 99` during type 7 authentication, it contains a malformed embedded key-data file from an earlier revision. Update the source, rebuild the binary or Docker image, and restart the service or recreate the container using that build. The key table is embedded at compile time, so editing a file inside an existing container will not update the running binary.
+If a build reports `illegal base64 data at input byte XX` during type X authentication, it may be that the build contains a malformed embedded key-data file from an earlier revision, or that the `user_id` or `password` in the config is not correct. Check that the `user_id` is a valid EcoFlow account ID and that the password is base64-encoded. If you are using a release binary, verify that it is a recent release and not an older build with known issues.
 
-DELTA 3 uses the supported type 7 handshake. Changing `devices[].model` does not change authentication or protocol selection; that field is display metadata. After rebuilding, check for `eco-ble authenticated` and fresh telemetry. A different authentication error should be investigated separately.
+For unknown BLE MAC addresses, check that the device is awake and advertising, and that the host has a working BLE adapter such as `hci0`. Use `bluetoothctl` to scan for the device and confirm the address. If the device is asleep or out of range, it will not respond to authentication attempts.
+
+For new errors, check the daemon logs with `sudo journalctl -u ecoflow-ble-nutd -f` or the console output if running in the foreground to see the authentication sequence and any error messages. Ensure that the configuration file is correct and that the daemon has access to the necessary BLE interface. Post any persistent issues to the project issue tracker or discussion forums with the relevant log excerpts and configuration details (excluding sensitive credentials).
+
+If you are using a container, ensure that the container has access to the host's Bluetooth interface. You may need to run the container with the `--privileged` flag or mount the Bluetooth device into the container.
 
 For container rebuild commands, see [Docker deployment](../deploy/docker/README.md#updating-and-stopping).
