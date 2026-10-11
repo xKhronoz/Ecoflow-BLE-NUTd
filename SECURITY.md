@@ -12,7 +12,7 @@ A formal security support window, backport policy, and response deadline have no
 
 Ecoflow-BLE-NUTd is a Linux daemon that exposes EcoFlow power-station telemetry through a NUT-compatible TCP server and an optional HTTP status/control interface. The `eco-ble` provider communicates through the host's BlueZ system D-Bus service. An optional EcoFlow cloud login resolves the app account's user ID; telemetry collection then uses BLE. The `mock` and `json-dir` providers support local testing and integration.
 
-Security review covers the daemon, BLE framing and authentication, telemetry parsing, NUT and web interfaces, configuration handling, dependencies, installation scripts, container deployment, and release workflows. Relevant code is under `cmd/` and `internal/`; deployment and build inputs are under `deploy/`, `scripts/`, `systemd/`, and `.github/workflows/`.
+Security review covers the daemon, BLE framing and authentication, telemetry parsing, NUT and web interfaces, configuration handling, dependencies, installation scripts, container deployment, and release workflows. Relevant code is under `cmd/` and `internal/`; deployment and build inputs are under `deploy/`, `scripts/`, and `.github/workflows/`.
 
 ## Threat model and trust boundaries
 

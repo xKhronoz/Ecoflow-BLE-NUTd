@@ -47,6 +47,25 @@ Compose builds from the repository root using this directory's Dockerfile. The c
 
 The health check verifies that the NUT server responds. Check logs for `eco-ble authenticated` and the web UI for fresh telemetry to verify BLE operation. A container can be healthy while the device is disconnected or authentication is retrying.
 
+## Use a published image
+
+Once a release's image publishing job succeeds, images are available from GHCR and Docker Hub. See [registry setup and tags](../../docs/releases.md#container-image-publishing). To use an image instead of building locally, replace the Compose service's `build` block and `image` line with:
+
+```yaml
+    image: ghcr.io/xkhronoz/ecoflow-ble-nutd:v0.1.0
+```
+
+Replace `v0.1.0` with a published version, or use `latest` to follow stable releases. For Docker Hub, use `docker.io/<namespace>/ecoflow-ble-nutd:<version>` with the configured publishing namespace. Keep the remaining service settings, including configuration and D-Bus mounts.
+
+Start or update that deployment from `deploy/docker/`:
+
+```sh
+docker compose pull
+docker compose up -d --no-build
+```
+
+This mode needs the deployment files and edited configuration but does not require Go source.
+
 ## Ports and web access
 
 The NUT service is published on host port `3493`. The web UI is available at `http://127.0.0.1:8080` on the Docker host and requires the configured NUT credentials.

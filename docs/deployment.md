@@ -1,70 +1,22 @@
-# Native Linux deployment
+# Deployment methods
 
-[Project overview](../README.md) · [Documentation index](README.md) · [Deployment options](../deploy/README.md)
+[Project overview](../README.md) · [Documentation index](README.md) · [Deployment files](../deploy/README.md)
 
-Use a Linux host with BlueZ and a working BLE adapter for the `eco-ble` provider. This guide covers native binaries and systemd; the [Docker guide](../deploy/docker/README.md) covers container deployment.
+Choose how to run the daemon on your host. The `eco-ble` provider requires Linux with BlueZ and a working Bluetooth LE adapter, such as `hci0`. Docker Desktop on macOS or Windows can run the mock provider for testing, but this deployment does not expose the host’s Bluetooth adapter.
 
-## Install from a source checkout
+| Method | When to use it | Guide |
+| --- | --- | --- |
+| Native binary with systemd | Run directly on a Linux host, start automatically at boot, and manage the service with systemctl and journald | [Native and systemd deployment](../deploy/systemd/README.md) |
+| Docker Compose | Manage the daemon as a container using a published GHCR/Docker Hub image or a local source build | [Docker deployment](../deploy/docker/README.md) |
+| Native binary without systemd | Run in the foreground for troubleshooting, or use your own service manager on a Linux host without systemd | [Run without systemd](../deploy/systemd/README.md#run-without-systemd) |
 
-Run from the repository root:
+The native guide covers both precompiled release archives and source builds, installation, service operation, and removal. The Docker guide covers configuration, host Bluetooth integration, published images, local builds, updates, and checks.
 
-```sh
-go build -o ecoflow-ble-nutd ./cmd/ecoflow-ble-nutd
-cp examples/ecoflow-ble-nutd.conf ecoflow-ble-nutd.conf
-chmod 600 ecoflow-ble-nutd.conf
-nano ecoflow-ble-nutd.conf
-sudo ./scripts/install-systemd.sh --binary ./ecoflow-ble-nutd --config ./ecoflow-ble-nutd.conf
-```
+## Before deployment
 
-Set the account credentials and device MAC addresses before installation. The installer keeps an existing `/etc/ecoflow-ble-nutd.conf`. See [configuration](configuration.md) and [BLE authentication](ble-authentication.md).
+1. Set up your EcoFlow account user ID and device BLE addresses using the [BLE authentication and discovery guide](ble-authentication.md).
+2. Review the [configuration guide](configuration.md) for device settings, NUT credentials, and the optional web UI.
+3. Choose the native release architecture or container image tag using the [release guide](releases.md). Linux AMD64, ARM64, and ARMv7 targets are available through the release workflow.
+4. Follow the installation and verification steps in your chosen deployment guide. Confirm authentication and fresh telemetry; a running service or healthy container alone does not confirm the BLE connection.
 
-## Install a release binary
-
-Choose the architecture from the [release target table](releases.md#published-release-targets). This example uses AMD64; substitute `arm64` for a Raspberry Pi 5 with a 64-bit OS, or `armv7` for a 32-bit ARMv7 host.
-
-```sh
-wget https://github.com/xkhronoz/ecoflow-ble-nutd/releases/download/latest/ecoflow-ble-nutd-linux-amd64.tar.gz
-mkdir -p ecoflow-ble-nutd-install
-tar -xzf ecoflow-ble-nutd-linux-amd64.tar.gz -C ecoflow-ble-nutd-install --strip-components=1
-cd ecoflow-ble-nutd-install
-cp ecoflow-ble-nutd.conf.example ecoflow-ble-nutd.conf
-chmod 600 ecoflow-ble-nutd.conf
-nano ecoflow-ble-nutd.conf
-sudo ./install-systemd.sh --config ./ecoflow-ble-nutd.conf
-```
-
-The rolling `latest` asset names remain stable across releases. For a fixed version, download a versioned asset from [GitHub Releases](https://github.com/xkhronoz/ecoflow-ble-nutd/releases).
-
-The bundled installer detects the binary, service unit, and example configuration in the extracted release directory. Available flags include `--binary PATH`, `--config PATH`, `--skip-config`, and `--no-start`.
-
-## Run without systemd
-
-From an extracted release directory with an edited configuration:
-
-```sh
-./ecoflow-ble-nutd -config ./ecoflow-ble-nutd.conf
-```
-
-Non-systemd hosts can run the binary directly; the systemd installer is for systemd hosts.
-
-## Service operation
-
-```sh
-sudo systemctl status ecoflow-ble-nutd
-sudo journalctl -u ecoflow-ble-nutd -f
-sudo systemctl restart ecoflow-ble-nutd
-```
-
-After updating the binary or configuration, restart the service. Check for `eco-ble authenticated` and fresh telemetry in the web UI.
-
-The native runtime uses `/usr/local/bin/ecoflow-ble-nutd` and `/etc/ecoflow-ble-nutd.conf`. Runtime state stays in memory. `/run/ecoflow-ble-nutd` is useful for optional JSON-provider inputs; it is not a database or required BLE data directory. Logs go to journald; the host's journald settings determine retention.
-
-## Uninstall
-
-From a source checkout:
-
-```sh
-sudo ./scripts/uninstall-systemd.sh
-```
-
-From an extracted release directory, use `sudo ./uninstall-systemd.sh`. Add `--remove-binary --remove-config` only when you also want to delete the installed binary and configuration.
+For development without BLE hardware, see the mock and JSON-directory providers in the [development guide](development.md).

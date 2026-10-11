@@ -4,6 +4,7 @@ package ecoflow
 
 import "tinygo.org/x/bluetooth"
 
-func newBLEAdapter(id string) *bluetooth.Adapter {
-	return bluetooth.NewAdapter(id)
+func enabledBLEAdapter(id string) (*bluetooth.Adapter, error) {
+	adapter := bluetooth.NewAdapter(id)
+	return adapter, adapter.Enable()
 }

@@ -12,8 +12,8 @@ import (
 type TinygoTransport struct{}
 
 func (t *TinygoTransport) FindByMAC(ctx context.Context, adapterID string, mac string, timeout time.Duration) (Discovery, error) {
-	adapter := newBLEAdapter(adapterID)
-	if err := adapter.Enable(); err != nil {
+	adapter, err := enabledBLEAdapter(adapterID)
+	if err != nil {
 		return Discovery{}, err
 	}
 	want := strings.ToUpper(mac)
@@ -68,8 +68,8 @@ func (t *TinygoTransport) FindByMAC(ctx context.Context, adapterID string, mac s
 }
 
 func (t *TinygoTransport) Connect(ctx context.Context, adapterID string, discovery Discovery, timeout time.Duration) (BLEConnection, error) {
-	adapter := newBLEAdapter(adapterID)
-	if err := adapter.Enable(); err != nil {
+	adapter, err := enabledBLEAdapter(adapterID)
+	if err != nil {
 		return nil, err
 	}
 	var addr bluetooth.Address
