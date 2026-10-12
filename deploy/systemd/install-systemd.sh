@@ -74,15 +74,11 @@ if [ -z "${config_src}" ]; then
   if [ -f "${script_dir}/ecoflow-ble-nutd.conf.example" ]; then
     config_src="${script_dir}/ecoflow-ble-nutd.conf.example"
   else
-    config_src="${script_dir}/../examples/ecoflow-ble-nutd.conf"
+    config_src="${script_dir}/../../examples/ecoflow-ble-nutd.conf"
   fi
 fi
 
-if [ -f "${script_dir}/${service_name}.service" ]; then
-  service_src="${script_dir}/${service_name}.service"
-else
-  service_src="${script_dir}/../systemd/${service_name}.service"
-fi
+service_src="${script_dir}/${service_name}.service"
 
 if [ ! -f "${service_src}" ]; then
   echo "service file not found: ${service_src}" >&2

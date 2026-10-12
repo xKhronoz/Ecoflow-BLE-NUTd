@@ -10,6 +10,10 @@ import (
 const (
 	packetPrefix    = 0xAA
 	encPacketPrefix = 0x5A5A
+	// Packet lengths are uint16 on the wire. The outer length includes CRC16.
+	maxPacketPayloadSize = 1<<16 - 1
+	maxEncPayloadSize    = maxPacketPayloadSize - 2
+	maxPacketSize        = maxPacketPayloadSize + 20
 )
 
 type Packet struct {
@@ -25,8 +29,11 @@ type Packet struct {
 	ProductID byte
 }
 
-func (p Packet) MarshalBinary() []byte {
+func (p Packet) MarshalBinary() ([]byte, error) {
 	payload := p.Payload
+	if len(payload) > maxPacketPayloadSize {
+		return nil, fmt.Errorf("packet payload too large: %d bytes, maximum %d", len(payload), maxPacketPayloadSize)
+	}
 	if payload == nil {
 		payload = []byte{}
 	}
@@ -61,7 +68,7 @@ func (p Packet) MarshalBinary() []byte {
 	buf.Write(payload)
 	crc := crc16ARC(buf.Bytes())
 	_ = binary.Write(buf, binary.LittleEndian, crc)
-	return buf.Bytes()
+	return buf.Bytes(), nil
 }
 
 func ParsePacket(data []byte, xorPayload bool) (Packet, error) {
@@ -131,8 +138,11 @@ type EncPacket struct {
 	Payload     []byte
 }
 
-func (e EncPacket) MarshalBinary() []byte {
+func (e EncPacket) MarshalBinary() ([]byte, error) {
 	payload := e.Payload
+	if len(payload) > maxEncPayloadSize {
+		return nil, fmt.Errorf("encrypted frame payload too large: %d bytes, maximum %d", len(payload), maxEncPayloadSize)
+	}
 	buf := bytes.NewBuffer(make([]byte, 0, 8+len(payload)))
 	_ = binary.Write(buf, binary.BigEndian, uint16(encPacketPrefix))
 	buf.WriteByte(e.FrameType << 4)
@@ -141,7 +151,7 @@ func (e EncPacket) MarshalBinary() []byte {
 	buf.Write(payload)
 	crc := crc16ARC(buf.Bytes())
 	_ = binary.Write(buf, binary.LittleEndian, crc)
-	return buf.Bytes()
+	return buf.Bytes(), nil
 }
 
 var errIncompleteFrame = errors.New("incomplete frame")

@@ -23,7 +23,10 @@ func (e Type7Encryption) Encrypt(plaintext []byte) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	plaintext = pkcs7Pad(plaintext, aes.BlockSize)
+	plaintext, err = pkcs7Pad(plaintext, aes.BlockSize)
+	if err != nil {
+		return nil, err
+	}
 	out := make([]byte, len(plaintext))
 	cipher.NewCBCEncrypter(block, e.IV).CryptBlocks(out, plaintext)
 	return out, nil
@@ -52,6 +55,9 @@ type Type1Encryption struct {
 }
 
 func (e Type1Encryption) Encrypt(plaintext []byte) ([]byte, error) {
+	if len(plaintext) > maxPacketSize {
+		return nil, fmt.Errorf("plaintext too large: %d bytes, maximum %d", len(plaintext), maxPacketSize)
+	}
 	block, err := aes.NewCipher(e.SessionKey)
 	if err != nil {
 		return nil, err
@@ -91,15 +97,17 @@ type EncPacketAssembler struct {
 func (a *EncPacketAssembler) WriteWithResponse() bool { return true }
 
 func (a *EncPacketAssembler) Encode(pkt Packet) ([]byte, error) {
-	payload := pkt.MarshalBinary()
+	payload, err := pkt.MarshalBinary()
+	if err != nil {
+		return nil, err
+	}
 	if a.encryption != nil {
-		var err error
 		payload, err = a.encryption.Encrypt(payload)
 		if err != nil {
 			return nil, err
 		}
 	}
-	return EncPacket{FrameType: 0x01, PayloadType: 0x00, Payload: payload}.MarshalBinary(), nil
+	return EncPacket{FrameType: 0x01, PayloadType: 0x00, Payload: payload}.MarshalBinary()
 }
 
 func (a *EncPacketAssembler) Reassemble(data []byte) ([][]byte, error) {
@@ -111,6 +119,10 @@ func (a *EncPacketAssembler) Reassemble(data []byte) ([][]byte, error) {
 	for len(data) > 0 {
 		start := bytes.Index(data, []byte{0x5A, 0x5A})
 		if start < 0 {
+			// Keep a possible first prefix byte for the next notification.
+			if data[len(data)-1] == 0x5A {
+				a.buffer = []byte{0x5A}
+			}
 			break
 		}
 		data = data[start:]
@@ -119,17 +131,13 @@ func (a *EncPacketAssembler) Reassemble(data []byte) ([][]byte, error) {
 			break
 		}
 		payloadLen := int(binary.LittleEndian.Uint16(data[4:6]))
-		if payloadLen > 10000 {
+		if payloadLen < 2 || payloadLen > 10000 {
 			data = data[2:]
 			continue
 		}
 		frameLen := 6 + payloadLen
 		if len(data) < frameLen {
-			next := bytes.Index(data[2:], []byte{0x5A, 0x5A})
-			if next >= 0 {
-				data = data[2+next:]
-				continue
-			}
+			// A prefix inside ciphertext is not evidence of a new frame.
 			a.buffer = append([]byte(nil), data...)
 			break
 		}
@@ -159,7 +167,7 @@ type PassthroughAssembler struct {
 func (a *PassthroughAssembler) WriteWithResponse() bool { return false }
 
 func (a *PassthroughAssembler) Encode(pkt Packet) ([]byte, error) {
-	return pkt.MarshalBinary(), nil
+	return pkt.MarshalBinary()
 }
 
 func (a *PassthroughAssembler) Reassemble(data []byte) ([][]byte, error) {
@@ -184,16 +192,7 @@ func (a *PassthroughAssembler) Reassemble(data []byte) ([][]byte, error) {
 		}
 		payloadLen := int(binary.LittleEndian.Uint16(data[2:4]))
 		version := data[1]
-		var frameLen int
-		if version == 0x04 {
-			frameLen = 8 + payloadLen + 2
-		} else {
-			innerOverhead := 13
-			if version&0x0F >= 0x03 {
-				innerOverhead = 15
-			}
-			frameLen = 5 + innerOverhead + payloadLen
-		}
+		frameLen := 5 + packetBodyLen(version, payloadLen)
 		if len(data) < frameLen {
 			a.buffer = append([]byte(nil), data...)
 			break
@@ -212,7 +211,10 @@ type RawHeaderAssembler struct {
 func (a *RawHeaderAssembler) WriteWithResponse() bool { return false }
 
 func (a *RawHeaderAssembler) Encode(pkt Packet) ([]byte, error) {
-	raw := pkt.MarshalBinary()
+	raw, err := pkt.MarshalBinary()
+	if err != nil {
+		return nil, err
+	}
 	encrypted, err := a.encryption.Encrypt(raw[5:])
 	if err != nil {
 		return nil, err
@@ -242,13 +244,7 @@ func (a *RawHeaderAssembler) Reassemble(data []byte) ([][]byte, error) {
 		}
 		payloadLen := int(binary.LittleEndian.Uint16(data[2:4]))
 		version := data[1]
-		innerOverhead := 13
-		if version == 0x04 {
-			innerOverhead = 5
-		} else if version >= 0x03 {
-			innerOverhead = 15
-		}
-		innerLen := innerOverhead + payloadLen
+		innerLen := packetBodyLen(version, payloadLen)
 		encryptedLen := ((innerLen + aes.BlockSize - 1) / aes.BlockSize) * aes.BlockSize
 		frameLen := 5 + encryptedLen
 		if len(data) < frameLen {
@@ -259,17 +255,36 @@ func (a *RawHeaderAssembler) Reassemble(data []byte) ([][]byte, error) {
 		if err != nil {
 			return nil, err
 		}
+		if len(body) < innerLen {
+			return nil, fmt.Errorf("decrypted packet body too short: got %d bytes, need %d", len(body), innerLen)
+		}
 		payloads = append(payloads, append(append([]byte(nil), data[:5]...), body[:innerLen]...))
 		data = data[frameLen:]
 	}
 	return payloads, nil
 }
 
+func packetBodyLen(version byte, payloadLen int) int {
+	if version == 0x04 {
+		return 5 + payloadLen
+	}
+	overhead := 13
+	if version&0x0F >= 0x03 {
+		overhead = 15
+	}
+	// Sentinel-format replies include their terminator in payloadLen and
+	// have no trailing CRC16. Compare the low nibble for the header layout.
+	if version&0x10 != 0 {
+		overhead -= 2
+	}
+	return overhead + payloadLen
+}
+
 type SimplePacketAssembler struct {
 	buffer []byte
 }
 
-func (a *SimplePacketAssembler) Encode(payload []byte) []byte {
+func (a *SimplePacketAssembler) Encode(payload []byte) ([]byte, error) {
 	return EncPacket{FrameType: 0x00, PayloadType: 0x00, Payload: payload}.MarshalBinary()
 }
 
@@ -281,6 +296,9 @@ func (a *SimplePacketAssembler) Parse(data []byte) ([]byte, bool) {
 	for len(data) > 0 {
 		start := bytes.Index(data, []byte{0x5A, 0x5A})
 		if start < 0 {
+			if data[len(data)-1] == 0x5A {
+				a.buffer = []byte{0x5A}
+			}
 			return nil, false
 		}
 		data = data[start:]
@@ -288,13 +306,13 @@ func (a *SimplePacketAssembler) Parse(data []byte) ([]byte, bool) {
 			a.buffer = append([]byte(nil), data...)
 			return nil, false
 		}
-		frameLen := 6 + int(binary.LittleEndian.Uint16(data[4:6]))
+		payloadLen := int(binary.LittleEndian.Uint16(data[4:6]))
+		if payloadLen < 2 || payloadLen > 10000 {
+			data = data[2:]
+			continue
+		}
+		frameLen := 6 + payloadLen
 		if len(data) < frameLen {
-			next := bytes.Index(data[2:], []byte{0x5A, 0x5A})
-			if next >= 0 {
-				data = data[2+next:]
-				continue
-			}
 			a.buffer = append([]byte(nil), data...)
 			return nil, false
 		}
@@ -304,22 +322,28 @@ func (a *SimplePacketAssembler) Parse(data []byte) ([]byte, bool) {
 			data = data[2:]
 			continue
 		}
+		a.buffer = append([]byte(nil), data[frameLen:]...)
 		return append([]byte(nil), payload...), true
 	}
 	return nil, false
 }
 
-func pkcs7Pad(src []byte, blockSize int) []byte {
-	pad := blockSize - (len(src) % blockSize)
-	if pad == 0 {
-		pad = blockSize
+func pkcs7Pad(src []byte, blockSize int) ([]byte, error) {
+	if blockSize < 1 || blockSize > 255 {
+		return nil, fmt.Errorf("invalid pkcs7 block size %d", blockSize)
 	}
+	// Only EcoFlow packets and handshake messages are encrypted. Bound the
+	// input before adding padding, including on 32-bit ARM hosts.
+	if len(src) > maxPacketSize {
+		return nil, fmt.Errorf("plaintext too large: %d bytes, maximum %d", len(src), maxPacketSize)
+	}
+	pad := blockSize - (len(src) % blockSize)
 	out := make([]byte, len(src)+pad)
 	copy(out, src)
 	for i := len(src); i < len(out); i++ {
 		out[i] = byte(pad)
 	}
-	return out
+	return out, nil
 }
 
 func pkcs7Unpad(src []byte, blockSize int) ([]byte, error) {

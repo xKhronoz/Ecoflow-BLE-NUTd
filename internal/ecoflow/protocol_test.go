@@ -36,7 +36,9 @@ func TestFrameAssemblers(t *testing.T) {
 		Payload: []byte("hello"),
 		DSrc:    0x01,
 		DDst:    0x01,
-		Version: 0x13,
+		// CRC-format packets have symmetric send/receive lengths. Sentinel
+		// replies are covered by TestSentinelFramesWithoutTrailingCRC.
+		Version: 0x03,
 	}
 	type testCase struct {
 		name      string
@@ -68,7 +70,7 @@ func TestFrameAssemblers(t *testing.T) {
 			if len(payloads) != 1 {
 				t.Fatalf("payloads = %d", len(payloads))
 			}
-			if !bytes.Equal(payloads[0], packet.MarshalBinary()) {
+			if !bytes.Equal(payloads[0], mustEncode(packet.MarshalBinary())) {
 				t.Fatalf("decoded packet mismatch")
 			}
 		})

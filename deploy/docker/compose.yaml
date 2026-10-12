@@ -1,0 +1,45 @@
+name: ecoflow-ble-nutd
+
+services:
+  ecoflow-ble-nutd:
+    build:
+      context: ../..
+      dockerfile: deploy/docker/Dockerfile
+    image: ecoflow-ble-nutd:local
+    restart: unless-stopped
+    # UID 0 can read a host-owned 0600 config and works with restrictive
+    # host D-Bus policies. This backend needs no raw device mounts.
+    user: "0:0"
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 128
+    stop_grace_period: 30s
+    environment:
+      DBUS_SYSTEM_BUS_ADDRESS: unix:path=/run/dbus/system_bus_socket
+      TZ: ${TZ:-UTC}
+    ports:
+      - "${NUT_BIND_ADDRESS:-0.0.0.0}:${NUT_PORT:-3493}:3493/tcp"
+      - "${WEB_BIND_ADDRESS:-127.0.0.1}:${WEB_PORT:-8080}:8080/tcp"
+    volumes:
+      - type: bind
+        source: ${ECOFLOW_CONFIG:-./ecoflow-ble-nutd.conf}
+        target: /etc/ecoflow-ble-nutd.conf
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${DBUS_HOST_PATH:-/run/dbus}
+        target: /run/dbus
+        read_only: true
+        bind:
+          create_host_path: false
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=8m
+    logging:
+      driver: json-file
+      options:
+        max-size: "5m"
+        max-file: "2"
