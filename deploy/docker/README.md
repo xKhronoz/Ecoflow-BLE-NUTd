@@ -49,13 +49,13 @@ The health check verifies that the NUT server responds. Check logs for `eco-ble 
 
 ## Use a published image
 
-Once a release's image publishing job succeeds, images are available from GHCR and Docker Hub. See [registry setup and tags](../../docs/releases.md#container-image-publishing). To use an image instead of building locally, replace the Compose service's `build` block and `image` line with:
+Browse published images on [GHCR container package](https://github.com/xKhronoz/Ecoflow-BLE-NUTd/pkgs/container/ecoflow-ble-nutd) and [Docker Hub](https://hub.docker.com/r/khronoz/ecoflow-ble-nutd). See [registry setup and tags](../../docs/releases.md#container-image-publishing). To use an image instead of building locally, replace the Compose service's `build` block and `image` line with:
 
 ```yaml
-    image: ghcr.io/xkhronoz/ecoflow-ble-nutd:v0.1.0
+    image: ghcr.io/xkhronoz/ecoflow-ble-nutd:v0.2.0
 ```
 
-Replace `v0.1.0` with a published version, or use `latest` to follow stable releases. For Docker Hub, use `docker.io/<namespace>/ecoflow-ble-nutd:<version>` with the configured publishing namespace. Keep the remaining service settings, including configuration and D-Bus mounts.
+Replace `v0.2.0` with a published version, or use `latest` to follow stable releases. For Docker Hub, use `docker.io/khronoz/ecoflow-ble-nutd:<version>`. Keep the remaining service settings, including configuration and D-Bus mounts.
 
 Start or update that deployment from `deploy/docker/`:
 

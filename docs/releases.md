@@ -57,11 +57,13 @@ Configure these repository secrets under **Settings â†’ Secrets and variables â†
 
 Create the Docker Hub repository `<namespace>/ecoflow-ble-nutd` and grant the login account write access. GHCR authentication uses `GITHUB_TOKEN` with job-scoped `packages: write`; no additional GHCR token is required. If a GHCR package already exists, ensure this repository has Actions access to it. Make the GHCR package public if users should pull without authentication.
 
-Published image names and tags:
+Browse release images on [GHCR container package](https://github.com/xKhronoz/Ecoflow-BLE-NUTd/pkgs/container/ecoflow-ble-nutd) and [Docker Hub](https://hub.docker.com/r/khronoz/ecoflow-ble-nutd). Native binary archives are available from [GitHub Releases](https://github.com/xKhronoz/Ecoflow-BLE-NUTd/releases).
+
+Published image names and example version tags:
 
 ```text
-ghcr.io/xkhronoz/ecoflow-ble-nutd:v0.1.0
-docker.io/<namespace>/ecoflow-ble-nutd:v0.1.0
+ghcr.io/xkhronoz/ecoflow-ble-nutd:v0.2.0
+docker.io/khronoz/ecoflow-ble-nutd:v0.2.0
 ```
 
 GHCR uses the lowercase GitHub repository name, so forks publish under their own owner. Stable versions also update `latest` in both registries. Prereleases publish only their explicit version tag and do not replace the image `latest` tag. The existing rolling native `latest` release still follows every release, including prereleases.

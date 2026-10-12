@@ -12,6 +12,12 @@ Choose how to run the daemon on your host. The `eco-ble` provider requires Linux
 
 The native guide covers both precompiled release archives and source builds, installation, service operation, and removal. The Docker guide covers configuration, host Bluetooth integration, published images, local builds, updates, and checks.
 
+## Downloads and container images
+
+- [GitHub Releases](https://github.com/xKhronoz/Ecoflow-BLE-NUTd/releases): native Linux binaries and installation files.
+- [GHCR container package](https://github.com/xKhronoz/Ecoflow-BLE-NUTd/pkgs/container/ecoflow-ble-nutd): images at `ghcr.io/xkhronoz/ecoflow-ble-nutd`.
+- [Docker Hub](https://hub.docker.com/r/khronoz/ecoflow-ble-nutd): images at `khronoz/ecoflow-ble-nutd`.
+
 ## Before deployment
 
 1. Set up your EcoFlow account user ID and device BLE addresses using the [BLE authentication and discovery guide](ble-authentication.md).

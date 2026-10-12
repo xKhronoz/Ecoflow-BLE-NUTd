@@ -15,6 +15,8 @@ It runs on Linux with BlueZ, keeps runtime state in memory, and supports low-RAM
 
 Use the EcoFlow app account associated with the device. A Developer account is not required. Docker setup is under [`deploy/docker/`](deploy/docker/README.md); native installation scripts and the service unit are under [`deploy/systemd/`](deploy/systemd/README.md).
 
+Container images are published on [GHCR container package](https://github.com/xKhronoz/Ecoflow-BLE-NUTd/pkgs/container/ecoflow-ble-nutd) and [Docker Hub](https://hub.docker.com/r/khronoz/ecoflow-ble-nutd). Native binaries are available from [GitHub Releases](https://github.com/xKhronoz/Ecoflow-BLE-NUTd/releases).
+
 ## Supported scope
 
 The daemon supports the DELTA 2 and RIVER 2 families, DELTA 3 family, DELTA Pro 3, DELTA Pro Ultra, and RIVER 3. Device profiles are selected from the advertised serial prefix. It implements authentication types `0`, `1`, and `7`, read-only telemetry, multiple virtual UPS devices, and stale-device reporting with `ups.status=WAIT`.
