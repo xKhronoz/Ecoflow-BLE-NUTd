@@ -2,7 +2,7 @@
 
 [Project overview](../README.md) · [Documentation index](README.md)
 
-This checklist tracks setup automation and user experience improvements. Unchecked items are planned work, not available features. Sections are ordered by suggested priority; no delivery dates are committed.
+This checklist tracks setup automation, user experience improvements, and deferred verification. Unchecked items are planned work, not available features or verified behavior. The setup and UX sections are ordered by suggested priority; no delivery dates are committed.
 
 ## First priority: guided setup
 
@@ -30,6 +30,15 @@ This checklist tracks setup automation and user experience improvements. Uncheck
 - [ ] Verify the status page on small screens and with keyboard/screen-reader navigation. Cover long device names and errors, visible focus, readable contrast, accessible table labels, and status announcements without announcing every poll.
 - [ ] Consolidate troubleshooting into a symptom-to-action guide for scan timeouts, login failures, stale readings, and container/native setup. Correct credential-encoding guidance to distinguish a plain-text configuration password from the encoded cloud API payload.
 - [ ] Document platform-specific discovery behavior and supported runtime limits, including how device identifiers differ between Linux and macOS. Provide verified discovery steps for each documented platform.
+
+## Deferred: power status and NUT shutdown verification
+
+These investigations are deferred from [PR #3](https://github.com/xKhronoz/Ecoflow-BLE-NUTd/pull/3). DELTA 3 authentication and telemetry have been reported working, but power-status accuracy and end-to-end shutdown behavior remain unverified.
+
+- [ ] Test DELTA 3 `OB`/`OL` accuracy with mains connected at the charge limit, below the limit while charging, disconnected, and reconnected. Compare no load, a small USB/DC load, and a steady AC-outlet load; record which ports are enabled and supplying power. Capture timestamped `upsc` readings, EcoFlow app observations, firmware version, and daemon logs after each condition settles.
+- [ ] Validate power-status mapping against raw telemetry. Capture both the presence and values of `plug_in_info_ac_in_flag` and `plug_in_info_ac_charger_flag`, AC-specific input watts, and total input watts across the test conditions. Establish what the flags mean before changing the decoder; distinguish mains availability, charging activity, and battery discharge. Cover zero input watts at the charge limit, solar/DC input without mains, and omitted fields in partial updates. Add regression tests for the mapping supported by hardware evidence.
+- [ ] Verify NUT shutdown behavior end to end on a controlled Pi/NAS setup. Check `upsmon.conf`, any `upssched.conf`/command script, and NAS shutdown policy; exercise `OB`, configured low-battery/runtime thresholds, brief communication loss and recovery, and sustained communication loss. Confirm intended `OB LB`/`FSD` handling, graceful shutdown, and absence of unintended shutdowns during normal operation. Record NUT version, configuration, and logs; use a noncritical load or disable shutdown actions for status-only tests.
+- [ ] Investigate the reported improvement after setting `upsmon` `DEADTIME` to 45 seconds. Correlate failed status polls and shutdown logs with the previous timeout and polling intervals. Treat the report as evidence about communication tolerance, not proof of correct `OB`/`OL` mapping; document any verified configuration guidance and remaining protocol limitations in the [NUT guide](nut-protocol.md).
 
 ## Completion criteria
 
