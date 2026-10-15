@@ -31,6 +31,24 @@ This checklist tracks setup automation, user experience improvements, and deferr
 - [ ] Consolidate troubleshooting into a symptom-to-action guide for scan timeouts, login failures, stale readings, and container/native setup. Correct credential-encoding guidance to distinguish a plain-text configuration password from the encoded cloud API payload.
 - [ ] Document platform-specific discovery behavior and supported runtime limits, including how device identifiers differ between Linux and macOS. Provide verified discovery steps for each documented platform.
 
+## Planned: notifications
+
+To design notification channel configuration and provider coverage. The providers and URL schemes below are implementation candidates, not currently supported configuration; validate each integration before documenting its final syntax.
+
+- [ ] Add named, individually enabled notification channels with per-device, event, and severity selection. Start with generic JSON webhooks and SMTP email, then extend provider coverage.
+- [ ] Support SMTP settings for server, port, sender, recipients, authentication, and TLS. Provide a test-email action and actionable delivery errors without exposing credentials.
+- [ ] Support one or more destination URLs per webhook channel, entered one per line. Define and validate provider-specific URL schemes, preserve required paths/query parameters, handle percent-encoded credentials, and show which destinations succeeded or failed.
+- [ ] Evaluate provider adapters for Discord, Slack, Mattermost, Telegram, ntfy, Gotify, Pushover, Bark, Signal via signal-cli-rest-api, Microsoft Teams via Workflows, Zabbix via `history.push`, and generic JSON. Document any external service requirements and verify payload formats and authentication for each adapter.
+- [ ] Support Apprise API passthrough for providers without native adapters, including authenticated self-hosted endpoints. Explain the separate Apprise service requirement.
+- [ ] Add optional MQTT notification publishing with TCP/TLS, broker authentication, configurable topic, QoS, and retain behavior. Publish structured JSON events and document URL escaping for topics; keep MQTT optional for normal BLE/NUT operation.
+- [ ] Define device-health alerts for stale telemetry, sustained disconnects, authentication failures, and recovery. Add configurable battery-charge/runtime threshold alerts with hysteresis, plus explicit collector pause/resume events that distinguish intentional pauses from failures.
+- [ ] Add power-transition alerts after the deferred `OB`/`OL` mapping tests establish their accuracy. Label events as reported power state rather than claiming a confirmed mains outage. Keep daemon-observed states distinct from NUT-client shutdown decisions; only notify about shutdown initiation/completion when the relevant integration can confirm it.
+- [ ] Prevent notification floods with transition-based events, configurable debounce/cooldown, deduplication, and recovery notifications. Include device name, timestamp, severity, relevant readings, and a dashboard link when configured.
+- [ ] Keep delivery asynchronous with bounded queues, request timeouts, capped retries/backoff, and per-destination failure isolation so slow channels cannot block BLE collection or NUT responses. Define queue-overflow and restart behavior explicitly.
+- [ ] Add channel management and test-send controls to the web UI, with masked secrets, clear validation, last delivery status, and sanitized error details. Keep tokens, passwords, and secret-bearing destination URLs out of status APIs, logs, and diagnostics exports.
+- [ ] Evaluate provider-specific options such as Bark urgency, sound, grouping, and tap-through links. Document defaults and make disruptive notification modes explicit choices.
+- [ ] Verify routing, fan-out, duplicate suppression, recovery alerts, invalid URLs, timeouts, retry exhaustion, SMTP/TLS failures, and credential redaction using mock delivery endpoints. Add setup examples and a supported-provider matrix once implemented.
+
 ## Deferred: power status and NUT shutdown verification
 
 These investigations are deferred from [PR #3](https://github.com/xKhronoz/Ecoflow-BLE-NUTd/pull/3). DELTA 3 authentication and telemetry have been reported working, but power-status accuracy and end-to-end shutdown behavior remain unverified.
