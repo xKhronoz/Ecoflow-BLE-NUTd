@@ -4,6 +4,21 @@ A small NUT-compatible daemon that exposes EcoFlow power stations as virtual UPS
 
 It runs on Linux with BlueZ, keeps runtime state in memory, and supports low-RAM hosts such as Raspberry Pi. The optional web UI shows device status and can pause or resume the collector. No database, Home Assistant, or MQTT service is required.
 
+## Screenshots
+
+The web dashboard shows collector state and device telemetry. These screenshots use the `mock` provider with simulated readings and an example device identity.
+
+![Web dashboard with collection running, collector status, and simulated DELTA 3 telemetry](docs/images/dashboard-running.png)
+
+<details>
+<summary>Paused collection</summary>
+
+Pausing collection keeps the NUT server running and reports `ups.status=WAIT` for the device.
+
+![Web dashboard with the collector disabled and device status set to WAIT](docs/images/dashboard-paused.png)
+
+</details>
+
 ## Get started
 
 | Task                                         | Guide                                            |
