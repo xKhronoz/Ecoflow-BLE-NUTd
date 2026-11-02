@@ -40,6 +40,8 @@ devices:
 
 The [native configuration example](../examples/ecoflow-ble-nutd.conf) and [Docker configuration example](../deploy/docker/ecoflow-ble-nutd.conf.example) contain the same daemon settings with different web bind addresses.
 
+NUT discovery and telemetry reads are available without authentication, including when `auth.username` and `auth.password` are set. These credentials protect NUT session/control commands and the web UI/API. Clients such as pfSense `upsmon` should use these top-level credentials; `provider.auth` is only for EcoFlow authentication. See [NUT protocol coverage](nut-protocol.md) for the supported commands.
+
 ## Web status and control
 
 For the optional web server:

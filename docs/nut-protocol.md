@@ -44,6 +44,8 @@ Current command coverage:
 
 The discovery/read-only and authentication/session command groups are implemented. End-to-end `upsmon` shutdown compatibility remains unverified; administrative commands, TLS, and tracking remain incomplete.
 
+NUT discovery and telemetry reads (`LIST UPS`, `LIST VAR`, `GET VAR`, `GET UPSDESC`, and `GET NUMLOGINS`), as well as `VER` and `PING`, do not require authentication. This allows standard `upsc` clients and the pfSense NUT status page to retrieve telemetry even when credentials are configured. `LOGIN`, `PRIMARY`/`MASTER`, and `FSD` still require authentication when credentials are configured. The web UI and API retain their existing authentication requirements.
+
 Level 1: upsc compatible (discovery and read-only variables) [*Currently Implemented*]
 
 - LIST UPS

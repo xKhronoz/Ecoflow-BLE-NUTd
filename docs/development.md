@@ -48,7 +48,7 @@ Or with NUT client tools:
 upsc delta2@127.0.0.1
 ```
 
-For a real BLE session, edit the configuration first and run on Linux with BlueZ. The `mock` and `json-dir` providers support development without a power station. `upsc` read-only access requires a configuration that permits unauthenticated reads; the shown netcat exchange supplies credentials for the shipped example.
+For a real BLE session, edit the configuration first and run on Linux with BlueZ. The `mock` and `json-dir` providers support development without a power station. `upsc` discovery and telemetry reads do not require authentication, even when credentials are configured. The shown netcat exchange also demonstrates authentication for NUT session/control commands.
 
 ## Checks
 

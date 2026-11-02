@@ -103,10 +103,8 @@ func (s *Server) command(line string, authed *bool) (string, bool) {
 		return "OK\n", false
 	}
 
-	if !*authed {
-		return "ERR ACCESS-DENIED\n", false
-	}
-
+	// Discovery and telemetry reads are public, as expected by upsc clients.
+	// Session and control commands are authenticated in the switch above.
 	switch cmd {
 	case "LIST":
 		if len(fields) < 2 {

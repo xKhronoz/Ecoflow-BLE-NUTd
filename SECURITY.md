@@ -18,7 +18,7 @@ Security review covers the daemon, BLE framing and authentication, telemetry par
 
 Protect account and NUT credentials, the daemon's host privileges, collector availability, and the integrity and freshness of UPS telemetry. Incorrect telemetry can affect decisions made by downstream monitoring or shutdown clients.
 
-- **Network clients:** treat NUT commands, HTTP requests, and browser-originated traffic as untrusted, including on a LAN or loopback interface. Configured credentials grant access to the supported interface; the same credentials protect the web UI and its collector controls. There are no separate administrator and monitoring roles.
+- **Network clients:** treat NUT commands, HTTP requests, and browser-originated traffic as untrusted, including on a LAN or loopback interface. NUT discovery and telemetry reads are intentionally public to clients that can reach the listener. Configured credentials protect NUT session/control commands and the web UI/API, including collector controls. There are no separate administrator and monitoring roles.
 - **BLE peers:** advertisements, serials, public keys, frames, and telemetry are untrusted. A configured MAC address selects a device; it does not authenticate the peer. Consider an attacker within BLE range who can impersonate advertisements or send malformed responses.
 - **Host administration:** an operator controls configuration, installed binaries, service files, and deployment settings. Administrator control over those files is distinct from a lower-privilege user's ability to modify them unexpectedly. Assess filesystem ownership and permissions before deciding that input is trusted.
 - **JSON inputs:** the operator chooses the input directory and authorized telemetry producer. Files still require safe parsing. A lower-privilege writer must not gain code execution or access beyond its intended telemetry role.
@@ -28,7 +28,7 @@ Protect account and NUT credentials, the daemon's host privileges, collector ava
 
 These are required review properties, not a claim that every control has been independently verified:
 
-- When authentication is configured, protected reads and collector enable/disable operations must require the configured credentials. Browser requests must not bypass protection or perform unauthorized state changes. Deliberately empty credentials disable authentication and must be assessed in that configuration.
+- When authentication is configured, NUT session/control commands, web UI/API reads, and collector enable/disable operations must require the configured credentials. NUT discovery and telemetry reads do not require authentication. Browser requests must not bypass protection or perform unauthorized state changes. Deliberately empty credentials disable authentication and must be assessed in that configuration.
 - Untrusted packet lengths, public keys, protobufs, JSON, and network commands must be validated before indexing, allocation, or use. Reject unsupported or oversized input with an error; do not allow length truncation, panics, or disproportionate resource use. Include 32-bit ARM when assessing arithmetic.
 - BLE authentication and session failures must not authorize a peer merely because unrelated telemetry arrives. Reconnect, cancellation, and collector disable operations must not leave unintended active connections.
 - Stale or disconnected devices must not be presented as fresh, healthy UPS telemetry. Device input must not inject executable HTML or unintended NUT responses.
