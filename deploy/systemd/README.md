@@ -4,6 +4,8 @@
 
 Use a Linux host with BlueZ and a working BLE adapter for the `eco-ble` provider. This guide covers native binaries and systemd; the [Docker guide](../docker/README.md) covers container deployment.
 
+The service requires systemd 247 or newer (`systemctl --version`). The config stays root-owned with mode `0600`; systemd's [LoadCredential](https://www.freedesktop.org/software/systemd/man/247/systemd.exec.html#Credentials) gives the service's dynamic user a private, read-only copy at startup.
+
 The [service unit](ecoflow-ble-nutd.service), [installer](install-systemd.sh), and [uninstaller](uninstall-systemd.sh) live under `deploy/systemd/`. Release archives also bundle these files at the archive root.
 
 ## Install from a source checkout
@@ -60,6 +62,19 @@ sudo systemctl restart ecoflow-ble-nutd
 ```
 
 After updating the binary or configuration, restart the service. Check for `eco-ble authenticated` and fresh telemetry in the web UI.
+
+### Fix config permission errors from an earlier installation
+
+If the journal reports `open /etc/ecoflow-ble-nutd.conf: permission denied`, install the updated service unit from this checkout:
+
+```sh
+sudo install -m 0644 deploy/systemd/ecoflow-ble-nutd.service /etc/systemd/system/ecoflow-ble-nutd.service
+sudo systemctl daemon-reload
+sudo systemctl restart ecoflow-ble-nutd
+sudo systemctl --no-pager --full status ecoflow-ble-nutd
+```
+
+From an updated release archive, use `ecoflow-ble-nutd.service` as the source path. Alternatively, rerun the updated installer with `--skip-config`; it replaces the service unit and preserves the existing config. Keep `/etc/ecoflow-ble-nutd.conf` root-owned with mode `0600`, since it contains credentials.
 
 The native runtime uses `/usr/local/bin/ecoflow-ble-nutd` and `/etc/ecoflow-ble-nutd.conf`. Runtime state stays in memory. `/run/ecoflow-ble-nutd` is useful for optional JSON-provider inputs; it is not a database or required BLE data directory. Logs go to journald; the host's journald settings determine retention.
 

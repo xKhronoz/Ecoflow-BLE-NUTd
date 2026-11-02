@@ -5,7 +5,8 @@ Wants=bluetooth.target
 
 [Service]
 Type=simple
-ExecStart=/usr/local/bin/ecoflow-ble-nutd -config /etc/ecoflow-ble-nutd.conf
+LoadCredential=ecoflow-ble-nutd.conf:/etc/ecoflow-ble-nutd.conf
+ExecStart=/usr/local/bin/ecoflow-ble-nutd -config ${CREDENTIALS_DIRECTORY}/ecoflow-ble-nutd.conf
 Restart=on-failure
 RestartSec=5
 DynamicUser=yes

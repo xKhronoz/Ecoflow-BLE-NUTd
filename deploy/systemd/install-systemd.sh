@@ -23,6 +23,8 @@ This script installs:
   /usr/local/bin/ecoflow-ble-nutd
   /etc/systemd/system/ecoflow-ble-nutd.service
   /etc/ecoflow-ble-nutd.conf
+
+Requires systemd 247 or newer for secure configuration credentials.
 EOF
 }
 
@@ -61,6 +63,18 @@ if [ "$(id -u)" -ne 0 ]; then
   exit 1
 fi
 
+systemd_version="$(systemctl --version | awk 'NR == 1 { print $2 }')"
+case "${systemd_version}" in
+  ''|*[!0-9]*)
+    echo "could not determine systemd version" >&2
+    exit 1
+    ;;
+esac
+if [ "${systemd_version}" -lt 247 ]; then
+  echo "systemd 247 or newer is required for LoadCredential (found ${systemd_version})" >&2
+  exit 1
+fi
+
 if [ ! -f "${binary_src}" ] && [ -f "${script_dir}/ecoflow-ble-nutd" ]; then
   binary_src="${script_dir}/ecoflow-ble-nutd"
 fi
@@ -96,6 +110,7 @@ if [ "${install_config}" -eq 1 ]; then
   if [ -e "/etc/${service_name}.conf" ]; then
     echo "keeping existing config: /etc/${service_name}.conf"
   else
+    # systemd passes a private copy to DynamicUser via LoadCredential.
     install -D -m 0600 "${config_src}" "/etc/${service_name}.conf"
   fi
 fi
