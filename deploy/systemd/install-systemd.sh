@@ -24,7 +24,7 @@ This script installs:
   /etc/systemd/system/ecoflow-ble-nutd.service
   /etc/ecoflow-ble-nutd.conf
 
-Requires systemd 247 or newer for secure configuration credentials.
+Requires systemd 247 or newer and systemd-sysusers.
 EOF
 }
 
@@ -99,6 +99,12 @@ if [ ! -f "${service_src}" ]; then
   exit 1
 fi
 
+# A static account is resolvable by dbus-daemon even when it bypasses
+# systemd's dynamic-user NSS lookups. sysusers preserves existing accounts.
+systemd-sysusers - <<'EOF'
+u ecoflow-ble-nutd - "EcoFlow BLE NUT daemon" /nonexistent
+EOF
+
 install -D -m 0755 "${binary_src}" "/usr/local/bin/${service_name}"
 install -D -m 0644 "${service_src}" "/etc/systemd/system/${service_name}.service"
 
@@ -110,7 +116,7 @@ if [ "${install_config}" -eq 1 ]; then
   if [ -e "/etc/${service_name}.conf" ]; then
     echo "keeping existing config: /etc/${service_name}.conf"
   else
-    # systemd passes a private copy to DynamicUser via LoadCredential.
+    # systemd passes a private copy to the service user via LoadCredential.
     install -D -m 0600 "${config_src}" "/etc/${service_name}.conf"
   fi
 fi
