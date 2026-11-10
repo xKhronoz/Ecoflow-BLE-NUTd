@@ -34,40 +34,93 @@ func (h *v3Handler) HandlePacket(packet Packet) (*Telemetry, []Packet, bool, err
 	}
 }
 
+// The property profiles (River 3, Delta 3, Delta Pro 3) push two messages
+// on cmd set 0xFE: DisplayPropertyUpload (0x15), what the app's main screen
+// shows, unprompted; and RuntimePropertyUpload (0x16), the electrical
+// detail (AC volts and amps, inverter temperatures, cell voltages), only
+// once asked for with the upload periods below.
+const (
+	cmdIDDisplayProperty = 0x15
+	cmdIDRuntimeProperty = 0x16
+)
+
+// Seconds between RuntimePropertyUpload pushes the device is asked for: a
+// full message, and incremental ones with what changed in between.
+const (
+	runtimeFullUploadPeriod        = 30
+	runtimeIncrementalUploadPeriod = 5
+)
+
 func (h *v3Handler) handleRiver3(packet Packet) (*Telemetry, []Packet, bool, error) {
-	if packet.Src != 0x02 || packet.CmdSet != 0xFE || packet.CmdID != 0x15 {
-		return nil, nil, false, nil
-	}
-	msg := &pr705pb.DisplayPropertyUpload{}
-	if err := proto.Unmarshal(packet.Payload, msg); err != nil {
-		return nil, nil, true, fmt.Errorf("decode river3 packet: %w", err)
-	}
-	telemetry := telemetryFromProto(msg)
-	return &telemetry, nil, true, nil
+	return handleProperty(packet, "river3", &pr705pb.DisplayPropertyUpload{}, &pr705pb.RuntimePropertyUpload{})
 }
 
 func (h *v3Handler) handleDelta3(packet Packet) (*Telemetry, []Packet, bool, error) {
-	if packet.Src != 0x02 || packet.CmdSet != 0xFE || packet.CmdID != 0x15 {
+	return handleProperty(packet, "delta3", &pd335pb.DisplayPropertyUpload{}, &pd335pb.RuntimePropertyUpload{})
+}
+
+func (h *v3Handler) handleDeltaPro3(packet Packet) (*Telemetry, []Packet, bool, error) {
+	return handleProperty(packet, "delta pro 3", &mr521pb.DisplayPropertyUpload{}, &mr521pb.RuntimePropertyUpload{})
+}
+
+func handleProperty(packet Packet, profile string, display, runtime proto.Message) (*Telemetry, []Packet, bool, error) {
+	if packet.Src != 0x02 || packet.CmdSet != 0xFE {
 		return nil, nil, false, nil
 	}
-	msg := &pd335pb.DisplayPropertyUpload{}
+	var msg proto.Message
+	switch packet.CmdID {
+	case cmdIDDisplayProperty:
+		msg = display
+	case cmdIDRuntimeProperty:
+		msg = runtime
+	default:
+		return nil, nil, false, nil
+	}
 	if err := proto.Unmarshal(packet.Payload, msg); err != nil {
-		return nil, nil, true, fmt.Errorf("decode delta3 packet: %w", err)
+		return nil, nil, true, fmt.Errorf("decode %s packet 0x%02x: %w", profile, packet.CmdID, err)
 	}
 	telemetry := telemetryFromProto(msg)
 	return &telemetry, nil, true, nil
 }
 
-func (h *v3Handler) handleDeltaPro3(packet Packet) (*Telemetry, []Packet, bool, error) {
-	if packet.Src != 0x02 || packet.CmdSet != 0xFE || packet.CmdID != 0x15 {
-		return nil, nil, false, nil
+// SessionPackets asks a property profile to push RuntimePropertyUpload, the
+// way the app does when it opens the device: a ConfigWrite with the upload
+// periods (cmd 0xFE/0x11). The packet version is the descriptor's; the
+// provider fills it in.
+func (h *v3Handler) SessionPackets() ([]Packet, error) {
+	var msg proto.Message
+	switch h.kind {
+	case ProfileRiver3:
+		msg = &pr705pb.ConfigWrite{
+			CfgRuntimePropertyFullUploadPeriod:        proto.Int32(runtimeFullUploadPeriod),
+			CfgRuntimePropertyIncrementalUploadPeriod: proto.Int32(runtimeIncrementalUploadPeriod),
+		}
+	case ProfileDelta3:
+		msg = &pd335pb.ConfigWrite{
+			CfgRuntimePropertyFullUploadPeriod:        proto.Int32(runtimeFullUploadPeriod),
+			CfgRuntimePropertyIncrementalUploadPeriod: proto.Int32(runtimeIncrementalUploadPeriod),
+		}
+	case ProfileDeltaPro3:
+		msg = &mr521pb.ConfigWrite{
+			CfgRuntimePropertyFullUploadPeriod:        proto.Int32(runtimeFullUploadPeriod),
+			CfgRuntimePropertyIncrementalUploadPeriod: proto.Int32(runtimeIncrementalUploadPeriod),
+		}
+	default:
+		return nil, nil
 	}
-	msg := &mr521pb.DisplayPropertyUpload{}
-	if err := proto.Unmarshal(packet.Payload, msg); err != nil {
-		return nil, nil, true, fmt.Errorf("decode delta pro 3 packet: %w", err)
+	payload, err := proto.Marshal(msg)
+	if err != nil {
+		return nil, err
 	}
-	telemetry := telemetryFromProto(msg)
-	return &telemetry, nil, true, nil
+	return []Packet{{
+		Src:     0x20,
+		Dst:     0x02,
+		CmdSet:  0xFE,
+		CmdID:   0x11,
+		Payload: payload,
+		DSrc:    0x01,
+		DDst:    0x01,
+	}}, nil
 }
 
 func (h *v3Handler) handleDeltaProUltra(packet Packet) (*Telemetry, []Packet, bool, error) {

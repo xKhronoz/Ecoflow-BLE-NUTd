@@ -203,6 +203,32 @@ func (p *Provider) runSession(ctx context.Context, store *state.Store, device co
 		}
 	}
 
+	// What the profile wants asked for: now, and again every so often.
+	const sessionRequestInterval = 5 * time.Minute
+	sendSessionPackets := func() error {
+		starter, ok := handler.(SessionStarter)
+		if !ok {
+			return nil
+		}
+		packets, err := starter.SessionPackets()
+		if err != nil {
+			return err
+		}
+		for _, packet := range packets {
+			if packet.Version == 0 {
+				packet.Version = desc.PacketVersion
+			}
+			if err := p.writePacket(conn, assembler, packet); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+	if err := sendSessionPackets(); err != nil {
+		return err
+	}
+	lastSessionRequest := time.Now()
+
 	for {
 		select {
 		case <-ctx.Done():
@@ -242,6 +268,12 @@ func (p *Provider) runSession(ctx context.Context, store *state.Store, device co
 			}
 			if now.Sub(lastPacket) >= 2*pollInterval {
 				return fmt.Errorf("idle timeout waiting for telemetry")
+			}
+			if now.Sub(lastSessionRequest) >= sessionRequestInterval {
+				if err := sendSessionPackets(); err != nil {
+					return err
+				}
+				lastSessionRequest = now
 			}
 		}
 	}

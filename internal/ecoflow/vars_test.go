@@ -34,23 +34,23 @@ func TestExtendedVarsFromDelta3Display(t *testing.T) {
 		t.Fatalf("battery power = %v, want 80", telemetry.BatteryPower)
 	}
 	want := map[string]string{
-		"input.frequency":       "50",
-		"input.realpower":       "210",
-		"ups.realpower":         "127",
-		"ups.realpower.nominal": "2000",
-		"ups.load":              "6",
-		"battery.temperature":   "31",
-		"ups.temperature":       "38",
-		"battery.capacity":      "40.0",
-		"battery.charge.low":    "20",
-		"outlet.1.desc":         "AC",
-		"outlet.1.realpower":    "100",
-		"outlet.1.status":       "on",
-		"outlet.3.desc":         "USB-C 1",
-		"outlet.3.realpower":    "26",
-		"outlet.3.status":       "on",
-		"outlet.6.desc":         "USB-A 1",
-		"outlet.6.status":       "off",
+		"input.frequency":          "50",
+		"input.realpower":          "210",
+		"ups.realpower":            "127",
+		"ups.realpower.nominal":    "2000",
+		"ups.load":                 "6",
+		"battery.temperature":      "31",
+		"ups.temperature":          "38",
+		"battery.capacity.nominal": "40.0",
+		"battery.charge.low":       "20",
+		"outlet.1.desc":            "AC",
+		"outlet.1.realpower":       "100",
+		"outlet.1.status":          "on",
+		"outlet.3.desc":            "USB-C 1",
+		"outlet.3.realpower":       "26",
+		"outlet.3.status":          "on",
+		"outlet.6.desc":            "USB-A 1",
+		"outlet.6.status":          "off",
 	}
 	for name, value := range want {
 		if got := telemetry.Vars[name]; got != value {
@@ -95,5 +95,71 @@ func TestExtendedVarsMergeKeepsEarlierKeys(t *testing.T) {
 	}
 	if telemetry := telemetryFromProto(&pd335pb.DisplayPropertyUpload{}); !telemetry.Empty() {
 		t.Errorf("an empty message should decode to empty telemetry: %+v", telemetry)
+	}
+}
+
+func TestExtendedVarsFromDelta3Runtime(t *testing.T) {
+	telemetry := telemetryFromProto(&pd335pb.RuntimePropertyUpload{
+		PlugInInfoAcInVol:   proto.Float32(231.4),
+		PlugInInfoAcInAmp:   proto.Float32(0.93),
+		PlugInInfoAcOutVol:  proto.Float32(229.9),
+		PlugInInfoAcOutAmp:  proto.Float32(0.55),
+		PlugInInfoAcOutFreq: proto.Uint32(50),
+		BmsBattVol:          proto.Float32(52.17),
+		BmsBattAmp:          proto.Float32(-1.5),
+		TempPcsAc:           proto.Float32(41.3),
+		BmsFullCap:          proto.Uint32(39500),
+		PlugInInfo_12VVol:   proto.Float32(13.1),
+		PlugInInfo_12VAmp:   proto.Float32(0.2),
+	})
+	want := map[string]string{
+		"input.voltage":    "231.4",
+		"input.current":    "0.93",
+		"output.voltage":   "229.9",
+		"output.current":   "0.55",
+		"output.frequency": "50",
+		"battery.voltage":  "52.17",
+		"battery.current":  "-1.50",
+		"ups.temperature":  "41",
+		"battery.capacity": "39.5",
+		"outlet.8.voltage": "13.1",
+		"outlet.8.current": "0.20",
+	}
+	for name, value := range want {
+		if got := telemetry.Vars[name]; got != value {
+			t.Errorf("%s = %q, want %q", name, got, value)
+		}
+	}
+	if telemetry.Charge != nil || telemetry.InputPower != nil {
+		t.Errorf("runtime message should not invent core readings: %+v", telemetry)
+	}
+}
+
+func TestSessionPacketsAskForRuntimeUploads(t *testing.T) {
+	handler := newV3Handler(ProfileDelta3)
+	starter, ok := handler.(SessionStarter)
+	if !ok {
+		t.Fatal("delta3 handler should request runtime uploads")
+	}
+	packets, err := starter.SessionPackets()
+	if err != nil || len(packets) != 1 {
+		t.Fatalf("packets = %v, err = %v", packets, err)
+	}
+	pkt := packets[0]
+	if pkt.Src != 0x20 || pkt.Dst != 0x02 || pkt.CmdSet != 0xFE || pkt.CmdID != 0x11 || pkt.DSrc != 0x01 || pkt.DDst != 0x01 {
+		t.Errorf("unexpected config write header: %+v", pkt)
+	}
+	var cfg pd335pb.ConfigWrite
+	if err := proto.Unmarshal(pkt.Payload, &cfg); err != nil {
+		t.Fatal(err)
+	}
+	if cfg.GetCfgRuntimePropertyFullUploadPeriod() != runtimeFullUploadPeriod ||
+		cfg.GetCfgRuntimePropertyIncrementalUploadPeriod() != runtimeIncrementalUploadPeriod {
+		t.Errorf("periods = %d/%d", cfg.GetCfgRuntimePropertyFullUploadPeriod(), cfg.GetCfgRuntimePropertyIncrementalUploadPeriod())
+	}
+	if _, ok := newV3Handler(ProfileDeltaProUltra).(SessionStarter); ok {
+		if packets, _ := newV3Handler(ProfileDeltaProUltra).(SessionStarter).SessionPackets(); len(packets) != 0 {
+			t.Errorf("the ultra has no upload periods to set: %v", packets)
+		}
 	}
 }

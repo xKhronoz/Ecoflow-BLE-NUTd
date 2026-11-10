@@ -1,6 +1,7 @@
 package ecoflow
 
 import (
+	"math"
 	"strconv"
 
 	"google.golang.org/protobuf/reflect/protoreflect"
@@ -34,60 +35,61 @@ var outletPorts = []struct {
 // over an earlier one key by key (Telemetry.Merge).
 func extendedVars(msg protoreflect.ProtoMessage) map[string]string {
 	vars := map[string]string{}
-	float := func(name string, precision int, fields ...string) {
-		if v, ok := protoFloat32Field(msg, fields...); ok {
-			vars[name] = formatFloat(v, precision)
-		}
-	}
-	uint := func(name string, fields ...string) {
-		if v, ok := protoUint32Field(msg, fields...); ok {
-			vars[name] = strconv.FormatUint(uint64(v), 10)
-		}
-	}
-	integer := func(name string, fields ...string) {
-		if v, ok := protoInt32Field(msg, fields...); ok {
-			vars[name] = strconv.Itoa(int(v))
+	// number stores the first present field under name with precision
+	// decimals; whole numbers (frequency, degrees, percent) use 0.
+	number := func(name string, precision int, fields ...string) {
+		if v, ok := protoNumberField(msg, fields...); ok {
+			vars[name] = strconv.FormatFloat(v, 'f', precision, 64)
 		}
 	}
 
-	// The AC side. RuntimePropertyUpload carries the volts and amps, the
-	// display message the frequency and the rated output.
-	float("input.voltage", 1, "plug_in_info_ac_in_vol")
-	uint("input.frequency", "plug_in_info_ac_in_feq")
-	float("input.current", 2, "plug_in_info_ac_in_amp")
-	float("input.realpower", 0, "pow_get_ac_in")
-	float("output.voltage", 1, "plug_in_info_ac_out_vol")
-	uint("output.frequency", "plug_in_info_ac_out_freq", "ac_out_freq")
-	float("output.current", 2, "plug_in_info_ac_out_amp")
-	float("ups.realpower", 0, "pow_out_sum_w", "watts_out_sum")
-	uint("ups.realpower.nominal", "plug_in_info_ac_out_dsg_pow_max")
-	if out, ok := protoFloat32Field(msg, "pow_out_sum_w", "watts_out_sum"); ok {
-		if nominal, ok := protoUint32Field(msg, "plug_in_info_ac_out_dsg_pow_max"); ok && nominal > 0 {
-			vars["ups.load"] = strconv.Itoa(clampNonNegative(roundFloat32(out * 100 / float32(nominal))))
+	// The AC side: the runtime message carries the volts and amps, the
+	// display message the input frequency and the rated output.
+	number("input.voltage", 1, "plug_in_info_ac_in_vol")
+	number("input.frequency", 0, "plug_in_info_ac_in_feq")
+	number("input.current", 2, "plug_in_info_ac_in_amp")
+	number("input.realpower", 0, "pow_get_ac_in")
+	number("output.voltage", 1, "plug_in_info_ac_out_vol")
+	number("output.frequency", 0, "plug_in_info_ac_out_freq", "ac_out_freq")
+	number("output.current", 2, "plug_in_info_ac_out_amp")
+	number("ups.realpower", 0, "pow_out_sum_w", "watts_out_sum")
+	number("ups.realpower.nominal", 0, "plug_in_info_ac_out_dsg_pow_max")
+	if out, ok := protoNumberField(msg, "pow_out_sum_w", "watts_out_sum"); ok {
+		if nominal, ok := protoNumberField(msg, "plug_in_info_ac_out_dsg_pow_max"); ok && nominal > 0 {
+			vars["ups.load"] = strconv.Itoa(clampNonNegative(int(math.Round(out * 100 / nominal))))
 		}
 	}
 
 	// The battery: the pack's own BMS first, the pack manager as fallback.
-	float("battery.voltage", 2, "bms_batt_vol", "cms_batt_vol")
-	float("battery.current", 2, "bms_batt_amp", "cms_batt_amp")
-	integer("battery.temperature", "bms_max_cell_temp")
-	integer("ups.temperature", "bms_max_mos_temp")
-	if v, ok := protoUint32Field(msg, "bms_design_cap"); ok {
-		vars["battery.capacity"] = formatFloat(float32(v)/1000, 1) // mAh -> Ah
+	number("battery.voltage", 2, "bms_batt_vol", "cms_batt_vol")
+	number("battery.current", 2, "bms_batt_amp", "cms_batt_amp")
+	number("battery.temperature", 0, "bms_max_cell_temp")
+	// The inverter's AC stage (runtime message) is the UPS temperature NUT
+	// means; the BMS MOSFETs (display message) stand in when it is absent.
+	number("ups.temperature", 0, "temp_pcs_ac", "bms_max_mos_temp")
+	capacity := func(name string, fields ...string) {
+		if v, ok := protoNumberField(msg, fields...); ok {
+			vars[name] = strconv.FormatFloat(v/1000, 'f', 1, 64) // mAh -> Ah
+		}
 	}
-	uint("battery.charge.low", "cms_min_dsg_soc")
+	capacity("battery.capacity.nominal", "bms_design_cap")
+	capacity("battery.capacity", "bms_full_cap")
+	number("battery.charge.low", 0, "cms_min_dsg_soc")
+	// The 12 V socket's own rail (runtime message).
+	number("outlet.8.voltage", 1, "plug_in_info_12v_vol")
+	number("outlet.8.current", 2, "plug_in_info_12v_amp")
 
 	for _, port := range outletPorts {
 		prefix := "outlet." + strconv.Itoa(port.index) + "."
 		present := false
 		if port.power != "" {
-			if v, ok := protoFloat32Field(msg, port.power); ok {
-				vars[prefix+"realpower"] = strconv.Itoa(clampNonNegative(roundFloat32(-v)))
+			if v, ok := protoNumberField(msg, port.power); ok {
+				vars[prefix+"realpower"] = strconv.Itoa(clampNonNegative(int(math.Round(-v))))
 				present = true
 			}
 		}
-		if v, ok := protoUint32Field(msg, port.flow); ok {
-			vars[prefix+"status"] = flowStatus(v)
+		if v, ok := protoNumberField(msg, port.flow); ok {
+			vars[prefix+"status"] = flowStatus(uint32(v))
 			present = true
 		}
 		if present {
@@ -104,8 +106,4 @@ func flowStatus(flow uint32) string {
 		return "on"
 	}
 	return "off"
-}
-
-func formatFloat(v float32, precision int) string {
-	return strconv.FormatFloat(float64(v), 'f', precision, 32)
 }
