@@ -43,7 +43,7 @@ func TestExtendedVarsFromDelta3Display(t *testing.T) {
 		"ups.temperature":          "38",
 		"battery.capacity.nominal": "40.0",
 		"battery.charge.low":       "20",
-		"outlet.1.desc":            "AC",
+		"outlet.1.desc":            "AC 1",
 		"outlet.1.realpower":       "100",
 		"outlet.1.status":          "on",
 		"outlet.3.desc":            "USB-C 1",
