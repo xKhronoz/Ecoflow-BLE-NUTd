@@ -134,32 +134,3 @@ func TestExtendedVarsFromDelta3Runtime(t *testing.T) {
 		t.Errorf("runtime message should not invent core readings: %+v", telemetry)
 	}
 }
-
-func TestSessionPacketsAskForRuntimeUploads(t *testing.T) {
-	handler := newV3Handler(ProfileDelta3)
-	starter, ok := handler.(SessionStarter)
-	if !ok {
-		t.Fatal("delta3 handler should request runtime uploads")
-	}
-	packets, err := starter.SessionPackets()
-	if err != nil || len(packets) != 1 {
-		t.Fatalf("packets = %v, err = %v", packets, err)
-	}
-	pkt := packets[0]
-	if pkt.Src != 0x20 || pkt.Dst != 0x02 || pkt.CmdSet != 0xFE || pkt.CmdID != 0x11 || pkt.DSrc != 0x01 || pkt.DDst != 0x01 {
-		t.Errorf("unexpected config write header: %+v", pkt)
-	}
-	var cfg pd335pb.ConfigWrite
-	if err := proto.Unmarshal(pkt.Payload, &cfg); err != nil {
-		t.Fatal(err)
-	}
-	if cfg.GetCfgRuntimePropertyFullUploadPeriod() != runtimeFullUploadPeriod ||
-		cfg.GetCfgRuntimePropertyIncrementalUploadPeriod() != runtimeIncrementalUploadPeriod {
-		t.Errorf("periods = %d/%d", cfg.GetCfgRuntimePropertyFullUploadPeriod(), cfg.GetCfgRuntimePropertyIncrementalUploadPeriod())
-	}
-	if _, ok := newV3Handler(ProfileDeltaProUltra).(SessionStarter); ok {
-		if packets, _ := newV3Handler(ProfileDeltaProUltra).(SessionStarter).SessionPackets(); len(packets) != 0 {
-			t.Errorf("the ultra has no upload periods to set: %v", packets)
-		}
-	}
-}

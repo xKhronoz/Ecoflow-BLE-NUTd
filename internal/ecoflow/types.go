@@ -125,14 +125,6 @@ type PacketHandler interface {
 	HandlePacket(Packet) (*Telemetry, []Packet, bool, error)
 }
 
-// SessionStarter is a PacketHandler with packets to send once a session is
-// authenticated (and again now and then, so a device that forgot them after
-// a reconnect of its own gets them back): requests for messages the device
-// does not push on its own.
-type SessionStarter interface {
-	SessionPackets() ([]Packet, error)
-}
-
 type profileSpec struct {
 	Kind          ProfileKind
 	Name          string
