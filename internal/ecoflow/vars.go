@@ -17,9 +17,10 @@ var outletPorts = []struct {
 	power string
 	flow  string
 }{
-	// The AC groups' own watts come from pow_get_ac_out_list (one item per
-	// group, in order); pow_get_ac_out is the total, the fallback for group 1.
-	{1, "AC", "pow_get_ac_out", "flow_info_ac_out"},
+	// The two AC groups' watts are slots 0 and 2 of pow_get_ac_out_list
+	// (checked against the app on a DELTA 3 Max Plus: 155 W / 11 W); slot 0
+	// doubles as pow_get_ac_out, the fallback for group 1.
+	{1, "AC 1", "pow_get_ac_out", "flow_info_ac_out"},
 	{2, "AC 2", "", "flow_info_ac2_out"},
 	{3, "USB-C 1", "pow_get_typec1", "flow_info_typec1"},
 	{4, "USB-C 2", "pow_get_typec2", "flow_info_typec2"},
@@ -82,11 +83,12 @@ func extendedVars(msg protoreflect.ProtoMessage) map[string]string {
 	number("outlet.8.current", 2, "plug_in_info_12v_amp")
 
 	acGroups, _ := protoNumberListField(msg, "pow_get_ac_out_list", "pow_get_ac_out_item")
+	acGroupSlot := map[int]int{1: 0, 2: 2}
 	for _, port := range outletPorts {
 		prefix := "outlet." + strconv.Itoa(port.index) + "."
 		present := false
-		if port.index <= 2 && len(acGroups) >= port.index {
-			vars[prefix+"realpower"] = strconv.Itoa(clampNonNegative(int(math.Round(-acGroups[port.index-1]))))
+		if slot, isAC := acGroupSlot[port.index]; isAC && len(acGroups) > slot {
+			vars[prefix+"realpower"] = strconv.Itoa(clampNonNegative(int(math.Round(-acGroups[slot]))))
 			present = true
 		} else if port.power != "" {
 			if v, ok := protoNumberField(msg, port.power); ok {

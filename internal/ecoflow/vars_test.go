@@ -158,12 +158,12 @@ func TestRatedPowerFromConfigWhenDeviceReportsNone(t *testing.T) {
 func TestAcGroupsFromList(t *testing.T) {
 	telemetry := telemetryFromProto(&pd335pb.DisplayPropertyUpload{
 		PowGetAcOut:     proto.Float32(-150),
-		PowGetAcOutList: &pd335pb.PowGetAcOutList{PowGetAcOutItem: []float32{-100.4, -49.6}},
+		PowGetAcOutList: &pd335pb.PowGetAcOutList{PowGetAcOutItem: []float32{-100.4, 0, -49.6, 0, 0}},
 		FlowInfoAcOut:   proto.Uint32(2),
 		FlowInfoAc2Out:  proto.Uint32(0),
 	})
 	want := map[string]string{
-		"outlet.1.realpower": "100", "outlet.1.status": "on", "outlet.1.desc": "AC",
+		"outlet.1.realpower": "100", "outlet.1.status": "on", "outlet.1.desc": "AC 1",
 		"outlet.2.realpower": "50", "outlet.2.status": "off", "outlet.2.desc": "AC 2",
 	}
 	for name, value := range want {
