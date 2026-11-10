@@ -27,7 +27,11 @@ var outletPorts = []struct {
 	{5, "USB-C 3", "pow_get_typec3", "flow_info_typec3"},
 	{6, "USB-A 1", "pow_get_qcusb1", "flow_info_qcusb1"},
 	{7, "USB-A 2", "pow_get_qcusb2", "flow_info_qcusb2"},
-	{8, "12 V", "pow_get_12v", "flow_info_12v"},
+	// The two 12 V outputs' watts are the slots of pow_get_12v_list (car
+	// socket, then the Anderson port); pow_get_12v is the fallback for the
+	// first. Both share the one 12 V switch.
+	{8, "12 V car", "pow_get_12v", "flow_info_12v"},
+	{9, "12 V Anderson", "", "flow_info_12v"},
 }
 
 // extendedVars maps whatever electrical detail a property message carries
@@ -83,12 +87,20 @@ func extendedVars(msg protoreflect.ProtoMessage) map[string]string {
 	number("outlet.8.current", 2, "plug_in_info_12v_amp")
 
 	acGroups, _ := protoNumberListField(msg, "pow_get_ac_out_list", "pow_get_ac_out_item")
-	acGroupSlot := map[int]int{1: 0, 2: 2}
+	dc12Groups, _ := protoNumberListField(msg, "pow_get_12v_list", "pow_get_12v_item")
+	// outlet number -> (list, slot) for the ports whose watts come from a list.
+	listSlot := map[int]struct {
+		list []float64
+		slot int
+	}{
+		1: {acGroups, 0}, 2: {acGroups, 2},
+		8: {dc12Groups, 0}, 9: {dc12Groups, 1},
+	}
 	for _, port := range outletPorts {
 		prefix := "outlet." + strconv.Itoa(port.index) + "."
 		present := false
-		if slot, isAC := acGroupSlot[port.index]; isAC && len(acGroups) > slot {
-			vars[prefix+"realpower"] = strconv.Itoa(clampNonNegative(int(math.Round(-acGroups[slot]))))
+		if ls, fromList := listSlot[port.index]; fromList && len(ls.list) > ls.slot {
+			vars[prefix+"realpower"] = strconv.Itoa(clampNonNegative(int(math.Round(-ls.list[ls.slot]))))
 			present = true
 		} else if port.power != "" {
 			if v, ok := protoNumberField(msg, port.power); ok {

@@ -57,7 +57,7 @@ func TestExtendedVarsFromDelta3Display(t *testing.T) {
 			t.Errorf("%s = %q, want %q", name, got, value)
 		}
 	}
-	for _, absent := range []string{"input.voltage", "outlet.2.desc", "outlet.6.realpower", "outlet.8.desc"} {
+	for _, absent := range []string{"input.voltage", "outlet.2.desc", "outlet.6.realpower", "outlet.8.desc", "outlet.9.desc"} {
 		if got, ok := telemetry.Vars[absent]; ok {
 			t.Errorf("%s = %q, want absent", absent, got)
 		}
@@ -178,5 +178,22 @@ func TestAcGroupsFromList(t *testing.T) {
 	}
 	if _, ok := telemetry.Vars["outlet.2.realpower"]; ok {
 		t.Error("outlet.2.realpower should be absent without the list")
+	}
+}
+
+func TestTwelveVoltOutletsFromList(t *testing.T) {
+	telemetry := telemetryFromProto(&pd335pb.DisplayPropertyUpload{
+		PowGet_12V:     proto.Float32(-30),
+		PowGet_12VList: &pd335pb.PowGet12VList{PowGet_12VItem: []float32{-20, -10}},
+		FlowInfo_12V:   proto.Uint32(2),
+	})
+	want := map[string]string{
+		"outlet.8.desc": "12 V car", "outlet.8.realpower": "20", "outlet.8.status": "on",
+		"outlet.9.desc": "12 V Anderson", "outlet.9.realpower": "10", "outlet.9.status": "on",
+	}
+	for name, value := range want {
+		if got := telemetry.Vars[name]; got != value {
+			t.Errorf("%s = %q, want %q", name, got, value)
+		}
 	}
 }
