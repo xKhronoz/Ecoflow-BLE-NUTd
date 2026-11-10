@@ -150,6 +150,7 @@ func (p *Provider) runSession(ctx context.Context, store *state.Store, device co
 	var lastFresh time.Time
 	isStale := true
 	var latestTelemetry Telemetry
+	ignoredKinds := map[[3]byte]struct{}{}
 
 	processPacket := func(packet Packet) error {
 		if desc.SupportsTime && isTimeRequest(packet) {
@@ -170,6 +171,15 @@ func (p *Provider) runSession(ctx context.Context, store *state.Store, device co
 			return err
 		}
 		if !handled {
+			// Once per kind per connection: what the device sends that no
+			// profile decodes yet, so a missing message is a log line away.
+			kind := [3]byte{packet.Src, packet.CmdSet, packet.CmdID}
+			if _, seen := ignoredKinds[kind]; !seen {
+				ignoredKinds[kind] = struct{}{}
+				slog.Info("eco-ble packet kind not decoded", "device", device.Name,
+					"src", fmt.Sprintf("0x%02x", packet.Src), "cmd_set", fmt.Sprintf("0x%02x", packet.CmdSet),
+					"cmd_id", fmt.Sprintf("0x%02x", packet.CmdID), "bytes", len(packet.Payload))
+			}
 			return nil
 		}
 		for _, outboundPacket := range outbound {
@@ -455,7 +465,30 @@ func liveVars(device config.Device, desc DeviceDescriptor, telemetry Telemetry) 
 	if lowBattery(device, telemetry) {
 		status += " LB"
 	}
+	if telemetry.BatteryPower != nil {
+		switch {
+		case *telemetry.BatteryPower > 0:
+			status += " CHRG"
+		case *telemetry.BatteryPower < 0:
+			status += " DISCHRG"
+		}
+	}
 	vars := identityVars(device, desc.Model, desc.Serial, status)
+	// The profile's extra variables first: the core ones below win, and a
+	// rated output from the device replaces the placeholder nominal.
+	for name, value := range telemetry.Vars {
+		vars[name] = value
+	}
+	if telemetry.BatteryPower != nil {
+		switch {
+		case *telemetry.BatteryPower > 0:
+			vars["battery.charger.status"] = "charging"
+		case *telemetry.BatteryPower < 0:
+			vars["battery.charger.status"] = "discharging"
+		default:
+			vars["battery.charger.status"] = "resting"
+		}
+	}
 	if telemetry.Charge != nil {
 		vars["battery.charge"] = state.FormatInt(*telemetry.Charge)
 	}

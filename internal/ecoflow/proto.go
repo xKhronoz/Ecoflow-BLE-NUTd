@@ -51,3 +51,19 @@ func protoBoolField(msg protoreflect.ProtoMessage, names ...string) (bool, bool)
 	}
 	return false, false
 }
+
+func protoInt32Field(msg protoreflect.ProtoMessage, names ...string) (int32, bool) {
+	m := msg.ProtoReflect()
+	fields := m.Descriptor().Fields()
+	for _, name := range names {
+		fd := fields.ByName(protoreflect.Name(name))
+		if fd == nil {
+			continue
+		}
+		if fd.HasPresence() && !m.Has(fd) {
+			continue
+		}
+		return int32(m.Get(fd).Int()), true
+	}
+	return 0, false
+}

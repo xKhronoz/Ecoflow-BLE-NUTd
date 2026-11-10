@@ -38,6 +38,12 @@ type Telemetry struct {
 	InputPower     *int
 	OutputPower    *int
 	InputPresent   *bool
+	// BatteryPower is the pack's own watts: positive charging, negative
+	// discharging. It drives the CHRG/DISCHRG status tokens.
+	BatteryPower *int
+	// Vars are further NUT variables the profile could decode, already
+	// formatted (extendedVars): the AC side, temperatures, outlets.
+	Vars map[string]string
 }
 
 func (t Telemetry) Clone() Telemetry {
@@ -47,6 +53,8 @@ func (t Telemetry) Clone() Telemetry {
 		InputPower:     cloneInt(t.InputPower),
 		OutputPower:    cloneInt(t.OutputPower),
 		InputPresent:   cloneBool(t.InputPresent),
+		BatteryPower:   cloneInt(t.BatteryPower),
+		Vars:           cloneVars(t.Vars),
 	}
 }
 
@@ -67,11 +75,23 @@ func (t Telemetry) Merge(other Telemetry) Telemetry {
 	if other.InputPresent != nil {
 		out.InputPresent = cloneBool(other.InputPresent)
 	}
+	if other.BatteryPower != nil {
+		out.BatteryPower = cloneInt(other.BatteryPower)
+	}
+	if len(other.Vars) > 0 {
+		if out.Vars == nil {
+			out.Vars = map[string]string{}
+		}
+		for name, value := range other.Vars {
+			out.Vars[name] = value
+		}
+	}
 	return out
 }
 
 func (t Telemetry) Empty() bool {
-	return t.Charge == nil && t.RuntimeSeconds == nil && t.InputPower == nil && t.OutputPower == nil && t.InputPresent == nil
+	return t.Charge == nil && t.RuntimeSeconds == nil && t.InputPower == nil && t.OutputPower == nil &&
+		t.InputPresent == nil && t.BatteryPower == nil && len(t.Vars) == 0
 }
 
 type DeviceDescriptor struct {
@@ -239,6 +259,17 @@ func cloneInt(v *int) *int {
 	}
 	x := *v
 	return &x
+}
+
+func cloneVars(v map[string]string) map[string]string {
+	if v == nil {
+		return nil
+	}
+	out := make(map[string]string, len(v))
+	for name, value := range v {
+		out[name] = value
+	}
+	return out
 }
 
 func cloneBool(v *bool) *bool {

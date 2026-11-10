@@ -116,6 +116,10 @@ func telemetryFromProto(msg protoreflect.ProtoMessage) Telemetry {
 	} else if t.InputPower != nil {
 		t.InputPresent = boolPtr(*t.InputPower > 0)
 	}
+	if value, ok := protoFloat32Field(msg, "pow_get_bms"); ok {
+		t.BatteryPower = intPtr(roundFloat32(value))
+	}
+	t.Vars = extendedVars(msg)
 	return t
 }
 
