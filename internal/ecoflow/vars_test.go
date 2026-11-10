@@ -154,3 +154,29 @@ func TestRatedPowerFromConfigWhenDeviceReportsNone(t *testing.T) {
 		t.Errorf("device rating should win: nominal=%q load=%q", vars["ups.realpower.nominal"], vars["ups.load"])
 	}
 }
+
+func TestAcGroupsFromList(t *testing.T) {
+	telemetry := telemetryFromProto(&pd335pb.DisplayPropertyUpload{
+		PowGetAcOut:     proto.Float32(-150),
+		PowGetAcOutList: &pd335pb.PowGetAcOutList{PowGetAcOutItem: []float32{-100.4, -49.6}},
+		FlowInfoAcOut:   proto.Uint32(2),
+		FlowInfoAc2Out:  proto.Uint32(0),
+	})
+	want := map[string]string{
+		"outlet.1.realpower": "100", "outlet.1.status": "on", "outlet.1.desc": "AC",
+		"outlet.2.realpower": "50", "outlet.2.status": "off", "outlet.2.desc": "AC 2",
+	}
+	for name, value := range want {
+		if got := telemetry.Vars[name]; got != value {
+			t.Errorf("%s = %q, want %q", name, got, value)
+		}
+	}
+	// Without the list, group 1 falls back to the total and group 2 has no watts.
+	telemetry = telemetryFromProto(&pd335pb.DisplayPropertyUpload{PowGetAcOut: proto.Float32(-150)})
+	if telemetry.Vars["outlet.1.realpower"] != "150" {
+		t.Errorf("outlet.1.realpower = %q, want 150", telemetry.Vars["outlet.1.realpower"])
+	}
+	if _, ok := telemetry.Vars["outlet.2.realpower"]; ok {
+		t.Error("outlet.2.realpower should be absent without the list")
+	}
+}
