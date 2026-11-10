@@ -34,6 +34,7 @@ devices:
     model: DELTA 2
     mac: AA:BB:CC:DD:EE:01
     low_battery_percent: 20
+    rated_power_watts: 1800
     low_runtime_seconds: 300
     stale_timeout_seconds: 60
 ```

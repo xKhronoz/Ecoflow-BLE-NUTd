@@ -35,6 +35,9 @@ type Device struct {
 	LowBatteryPercent   int    `json:"low_battery_percent" yaml:"low_battery_percent"`
 	LowRuntimeSeconds   int    `json:"low_runtime_seconds" yaml:"low_runtime_seconds"`
 	StaleTimeoutSeconds int    `json:"stale_timeout_seconds" yaml:"stale_timeout_seconds"`
+	// RatedPowerWatts is the AC output rating from the device's label, for
+	// ups.realpower.nominal and ups.load when the device does not report one.
+	RatedPowerWatts int `json:"rated_power_watts" yaml:"rated_power_watts"`
 }
 
 type ProviderCfg struct {

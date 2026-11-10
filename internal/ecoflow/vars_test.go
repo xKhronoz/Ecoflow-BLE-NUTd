@@ -134,3 +134,23 @@ func TestExtendedVarsFromDelta3Runtime(t *testing.T) {
 		t.Errorf("runtime message should not invent core readings: %+v", telemetry)
 	}
 }
+
+func TestRatedPowerFromConfigWhenDeviceReportsNone(t *testing.T) {
+	telemetry := telemetryFromProto(&pd335pb.DisplayPropertyUpload{
+		CmsBattSoc: proto.Float32(50),
+		PowOutSumW: proto.Float32(600),
+	})
+	vars := liveVars(config.Device{Name: "ups", RatedPowerWatts: 3000}, DeviceDescriptor{}, telemetry)
+	if vars["ups.realpower.nominal"] != "3000" || vars["ups.load"] != "20" {
+		t.Errorf("nominal=%q load=%q", vars["ups.realpower.nominal"], vars["ups.load"])
+	}
+	// A rating the device does report wins over the config.
+	telemetry = telemetryFromProto(&pd335pb.DisplayPropertyUpload{
+		PowOutSumW:               proto.Float32(600),
+		PlugInInfoAcOutDsgPowMax: proto.Uint32(2400),
+	})
+	vars = liveVars(config.Device{Name: "ups", RatedPowerWatts: 3000}, DeviceDescriptor{}, telemetry)
+	if vars["ups.realpower.nominal"] != "2400" || vars["ups.load"] != "25" {
+		t.Errorf("device rating should win: nominal=%q load=%q", vars["ups.realpower.nominal"], vars["ups.load"])
+	}
+}

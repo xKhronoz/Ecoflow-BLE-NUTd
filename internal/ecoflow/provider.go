@@ -501,6 +501,14 @@ func liveVars(device config.Device, desc DeviceDescriptor, telemetry Telemetry) 
 	if telemetry.OutputPower != nil {
 		vars["output.power"] = state.FormatInt(*telemetry.OutputPower)
 	}
+	// The rating from the config when the device reports none: the nominal
+	// output, and the load as a share of it.
+	if device.RatedPowerWatts > 0 && (vars["ups.realpower.nominal"] == "" || vars["ups.realpower.nominal"] == "0") {
+		vars["ups.realpower.nominal"] = state.FormatInt(device.RatedPowerWatts)
+		if telemetry.OutputPower != nil {
+			vars["ups.load"] = state.FormatInt(clampNonNegative(*telemetry.OutputPower * 100 / device.RatedPowerWatts))
+		}
+	}
 	return vars
 }
 
