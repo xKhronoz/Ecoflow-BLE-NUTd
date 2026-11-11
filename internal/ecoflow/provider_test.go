@@ -191,7 +191,8 @@ func TestRunSessionPublishesTelemetryAndTransitionsToWAIT(t *testing.T) {
 
 	waitForCondition(t, 1500*time.Millisecond, func() bool {
 		ups, ok := store.Get(device.Name)
-		return ok && ups.Vars["battery.charge"] == "74" && ups.Vars["ups.status"] == "OL"
+		// 120 W in, 85 W out: on the grid and charging, from the sums.
+		return ok && ups.Vars["battery.charge"] == "74" && ups.Vars["ups.status"] == "OL CHRG"
 	})
 	waitForCondition(t, 1800*time.Millisecond, func() bool {
 		ups, ok := store.Get(device.Name)
