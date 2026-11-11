@@ -41,8 +41,14 @@ type Telemetry struct {
 	// BatteryPower is the pack's own watts: positive charging, negative
 	// discharging. It drives the CHRG/DISCHRG status tokens.
 	BatteryPower *int
+	// The two readings behind ups.temperature, kept apart so that a display
+	// message cannot overwrite what a runtime message gave: the inverter's
+	// AC stage (temp_pcs_ac) is preferred, the BMS MOSFETs (bms_max_mos_temp)
+	// stand in while it is unknown.
+	InverterTemperature *int
+	MOSFETTemperature   *int
 	// Vars are further NUT variables the profile could decode, already
-	// formatted (extendedVars): the AC side, temperatures, outlets.
+	// formatted (extendedVars): the AC side, the battery, outlets.
 	Vars map[string]string
 }
 
@@ -55,6 +61,9 @@ func (t Telemetry) Clone() Telemetry {
 		InputPresent:   cloneBool(t.InputPresent),
 		BatteryPower:   cloneInt(t.BatteryPower),
 		Vars:           cloneVars(t.Vars),
+
+		InverterTemperature: cloneInt(t.InverterTemperature),
+		MOSFETTemperature:   cloneInt(t.MOSFETTemperature),
 	}
 }
 
@@ -78,6 +87,12 @@ func (t Telemetry) Merge(other Telemetry) Telemetry {
 	if other.BatteryPower != nil {
 		out.BatteryPower = cloneInt(other.BatteryPower)
 	}
+	if other.InverterTemperature != nil {
+		out.InverterTemperature = cloneInt(other.InverterTemperature)
+	}
+	if other.MOSFETTemperature != nil {
+		out.MOSFETTemperature = cloneInt(other.MOSFETTemperature)
+	}
 	if len(other.Vars) > 0 {
 		if out.Vars == nil {
 			out.Vars = map[string]string{}
@@ -91,7 +106,8 @@ func (t Telemetry) Merge(other Telemetry) Telemetry {
 
 func (t Telemetry) Empty() bool {
 	return t.Charge == nil && t.RuntimeSeconds == nil && t.InputPower == nil && t.OutputPower == nil &&
-		t.InputPresent == nil && t.BatteryPower == nil && len(t.Vars) == 0
+		t.InputPresent == nil && t.BatteryPower == nil && t.InverterTemperature == nil &&
+		t.MOSFETTemperature == nil && len(t.Vars) == 0
 }
 
 type DeviceDescriptor struct {

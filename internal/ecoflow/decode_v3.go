@@ -2,6 +2,7 @@ package ecoflow
 
 import (
 	"fmt"
+	"math"
 
 	"github.com/xkhronoz/ecoflow-ble-nutd/internal/ecoflow/pb/mr521pb"
 	"github.com/xkhronoz/ecoflow-ble-nutd/internal/ecoflow/pb/pd335pb"
@@ -127,6 +128,12 @@ func telemetryFromProto(msg protoreflect.ProtoMessage) Telemetry {
 	}
 	if value, ok := protoFloat32Field(msg, "pow_get_bms"); ok {
 		t.BatteryPower = intPtr(roundFloat32(value))
+	}
+	if value, ok := protoNumberField(msg, "temp_pcs_ac"); ok {
+		t.InverterTemperature = intPtr(int(math.Round(value)))
+	}
+	if value, ok := protoNumberField(msg, "bms_max_mos_temp"); ok {
+		t.MOSFETTemperature = intPtr(int(math.Round(value)))
 	}
 	t.Vars = extendedVars(msg)
 	return t

@@ -7,6 +7,8 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"math"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -505,13 +507,23 @@ func liveVars(device config.Device, desc DeviceDescriptor, telemetry Telemetry, 
 	if telemetry.OutputPower != nil {
 		vars["output.power"] = state.FormatInt(*telemetry.OutputPower)
 	}
-	// The rating from the config when the device reports none: the nominal
-	// output, and the load as a share of it.
-	if device.RatedPowerWatts > 0 && (vars["ups.realpower.nominal"] == "" || vars["ups.realpower.nominal"] == "0") {
-		vars["ups.realpower.nominal"] = state.FormatInt(device.RatedPowerWatts)
-		if telemetry.OutputPower != nil {
-			vars["ups.load"] = state.FormatInt(clampNonNegative(*telemetry.OutputPower * 100 / device.RatedPowerWatts))
-		}
+	// Derived after the merge, so that two readings need not share a
+	// message: the load from the latest output and the latest rating (the
+	// device's, else the config's), the UPS temperature from the inverter's
+	// AC stage once a runtime message has given it, else the BMS MOSFETs.
+	nominal, _ := strconv.Atoi(vars["ups.realpower.nominal"])
+	if nominal <= 0 && device.RatedPowerWatts > 0 {
+		nominal = device.RatedPowerWatts
+		vars["ups.realpower.nominal"] = state.FormatInt(nominal)
+	}
+	if nominal > 0 && telemetry.OutputPower != nil {
+		vars["ups.load"] = state.FormatInt(clampNonNegative(int(math.Round(float64(*telemetry.OutputPower) * 100 / float64(nominal)))))
+	}
+	switch {
+	case telemetry.InverterTemperature != nil:
+		vars["ups.temperature"] = state.FormatInt(*telemetry.InverterTemperature)
+	case telemetry.MOSFETTemperature != nil:
+		vars["ups.temperature"] = state.FormatInt(*telemetry.MOSFETTemperature)
 	}
 	return vars
 }
