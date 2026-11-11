@@ -27,4 +27,6 @@ devices:
     mac: AA:BB:CC:DD:EE:01
     low_battery_percent: 20
     low_runtime_seconds: 300
+    low_runtime_max_percent: 50
+    low_runtime_grace_seconds: 60
     stale_timeout_seconds: 60

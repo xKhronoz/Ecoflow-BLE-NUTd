@@ -63,7 +63,7 @@ func TestExtendedVarsFromDelta3Display(t *testing.T) {
 		}
 	}
 
-	vars := liveVars(config.Device{Name: "ups", LowBatteryPercent: 20, LowRuntimeSeconds: 300}, DeviceDescriptor{}, telemetry)
+	vars := liveVars(config.Device{Name: "ups", LowBatteryPercent: 20, LowRuntimeSeconds: 300}, DeviceDescriptor{}, telemetry, false)
 	if vars["ups.status"] != "OL CHRG" {
 		t.Errorf("ups.status = %q, want %q", vars["ups.status"], "OL CHRG")
 	}
@@ -140,7 +140,7 @@ func TestRatedPowerFromConfigWhenDeviceReportsNone(t *testing.T) {
 		CmsBattSoc: proto.Float32(50),
 		PowOutSumW: proto.Float32(600),
 	})
-	vars := liveVars(config.Device{Name: "ups", RatedPowerWatts: 3000}, DeviceDescriptor{}, telemetry)
+	vars := liveVars(config.Device{Name: "ups", RatedPowerWatts: 3000}, DeviceDescriptor{}, telemetry, false)
 	if vars["ups.realpower.nominal"] != "3000" || vars["ups.load"] != "20" {
 		t.Errorf("nominal=%q load=%q", vars["ups.realpower.nominal"], vars["ups.load"])
 	}
@@ -149,7 +149,7 @@ func TestRatedPowerFromConfigWhenDeviceReportsNone(t *testing.T) {
 		PowOutSumW:               proto.Float32(600),
 		PlugInInfoAcOutDsgPowMax: proto.Uint32(2400),
 	})
-	vars = liveVars(config.Device{Name: "ups", RatedPowerWatts: 3000}, DeviceDescriptor{}, telemetry)
+	vars = liveVars(config.Device{Name: "ups", RatedPowerWatts: 3000}, DeviceDescriptor{}, telemetry, false)
 	if vars["ups.realpower.nominal"] != "2400" || vars["ups.load"] != "25" {
 		t.Errorf("device rating should win: nominal=%q load=%q", vars["ups.realpower.nominal"], vars["ups.load"])
 	}

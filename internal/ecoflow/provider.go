@@ -150,6 +150,7 @@ func (p *Provider) runSession(ctx context.Context, store *state.Store, device co
 	var lastFresh time.Time
 	isStale := true
 	var latestTelemetry Telemetry
+	var low lowBatteryTracker
 	ignoredKinds := map[[3]byte]struct{}{}
 
 	processPacket := func(packet Packet) error {
@@ -193,7 +194,8 @@ func (p *Provider) runSession(ctx context.Context, store *state.Store, device co
 		lastFresh = time.Now()
 		isStale = false
 		latestTelemetry = latestTelemetry.Merge(*telemetry)
-		store.Upsert(device.Name, device.Description, liveVars(device, desc, latestTelemetry))
+		store.Upsert(device.Name, device.Description,
+			liveVars(device, desc, latestTelemetry, low.Low(device, latestTelemetry, time.Now())))
 		return nil
 	}
 
@@ -457,12 +459,14 @@ func authErrorFromPayload(payload []byte) error {
 	}
 }
 
-func liveVars(device config.Device, desc DeviceDescriptor, telemetry Telemetry) map[string]string {
+// liveVars is the NUT variable set for one telemetry snapshot; low is the
+// tracker's verdict for it (lowBatteryTracker.Low).
+func liveVars(device config.Device, desc DeviceDescriptor, telemetry Telemetry, low bool) map[string]string {
 	status := "OB"
 	if telemetry.InputPresent != nil && *telemetry.InputPresent {
 		status = "OL"
 	}
-	if lowBattery(device, telemetry) {
+	if low {
 		status += " LB"
 	}
 	if telemetry.BatteryPower != nil {
@@ -542,12 +546,28 @@ func identityVars(device config.Device, fallbackModel string, serial string, sta
 	}
 }
 
-func lowBattery(device config.Device, telemetry Telemetry) bool {
+// lowBatteryTracker decides LB. The charge threshold is immediate. The
+// runtime threshold needs the device discharging, a charge at or below
+// LowRuntimeMaxPercent, and LowRuntimeGraceSeconds of it without a break:
+// the device's estimate is stale right after a switch to battery and
+// noisy under a changing load, and one bad second must not shut hosts down.
+type lowBatteryTracker struct {
+	runtimeLowSince time.Time
+}
+
+func (l *lowBatteryTracker) Low(device config.Device, telemetry Telemetry, now time.Time) bool {
 	if telemetry.Charge != nil && *telemetry.Charge <= device.LowBatteryPercent {
 		return true
 	}
-	if telemetry.RuntimeSeconds != nil && *telemetry.RuntimeSeconds <= device.LowRuntimeSeconds {
-		return true
+	discharging := telemetry.InputPresent == nil || !*telemetry.InputPresent
+	plausible := telemetry.Charge == nil || *telemetry.Charge <= device.LowRuntimeMaxPercent
+	runtimeLow := telemetry.RuntimeSeconds != nil && *telemetry.RuntimeSeconds <= device.LowRuntimeSeconds
+	if !(discharging && plausible && runtimeLow) {
+		l.runtimeLowSince = time.Time{}
+		return false
 	}
-	return false
+	if l.runtimeLowSince.IsZero() {
+		l.runtimeLowSince = now
+	}
+	return now.Sub(l.runtimeLowSince) >= time.Duration(device.LowRuntimeGraceSeconds)*time.Second
 }

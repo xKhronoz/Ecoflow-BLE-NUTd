@@ -36,8 +36,12 @@ devices:
     low_battery_percent: 20
     rated_power_watts: 1800
     low_runtime_seconds: 300
+    low_runtime_max_percent: 50
+    low_runtime_grace_seconds: 60
     stale_timeout_seconds: 60
 ```
+
+`low_battery_percent` sets `LB` at once. `low_runtime_seconds` sets it from the device's remaining-time estimate, which is stale for the first seconds after a switch to battery and noisy under a changing load, so it only counts while discharging, at or below `low_runtime_max_percent` of charge, and once it has stayed low for `low_runtime_grace_seconds`.
 
 The [native configuration example](../examples/ecoflow-ble-nutd.conf) and [Docker configuration example](../deploy/docker/ecoflow-ble-nutd.conf.example) contain the same daemon settings with different web bind addresses.
 
