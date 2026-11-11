@@ -26,7 +26,7 @@ The RIVER 3, DELTA 3 and DELTA Pro 3 families push a `DisplayPropertyUpload` mes
 | hottest cell                             | `battery.temperature`                                 |
 | design capacity (Ah)                     | `battery.capacity.nominal`                            |
 | discharge floor from the app             | `battery.charge.low`                                  |
-| pack charging / discharging              | append `CHRG` / `DISCHRG`; `battery.charger.status`   |
+| pack charging / discharging (`pow_get_bms`, else input minus output) | append `CHRG` / `DISCHRG`; `battery.charger.status` |
 | one outlet per port                      | `outlet.N.desc`, `outlet.N.realpower`, `outlet.N.status` |
 
 Outlet numbers are fixed per port so a reading keeps its meaning across models and partial updates: 1 AC, 2 AC 2 (second AC group), 3-5 USB-C, 6-7 USB-A, 8 12 V car socket, 9 12 V Anderson. A port the model lacks never appears; the Anderson port appears only when the device reports a second 12 V group, since it shares the 12 V switch with the car socket.

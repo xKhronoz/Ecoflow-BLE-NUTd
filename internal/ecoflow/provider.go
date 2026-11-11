@@ -471,11 +471,12 @@ func liveVars(device config.Device, desc DeviceDescriptor, telemetry Telemetry, 
 	if low {
 		status += " LB"
 	}
-	if telemetry.BatteryPower != nil {
+	packWatts, packKnown := packPower(telemetry)
+	if packKnown {
 		switch {
-		case *telemetry.BatteryPower > 0:
+		case packWatts > 0:
 			status += " CHRG"
-		case *telemetry.BatteryPower < 0:
+		case packWatts < 0:
 			status += " DISCHRG"
 		}
 	}
@@ -485,11 +486,11 @@ func liveVars(device config.Device, desc DeviceDescriptor, telemetry Telemetry, 
 	for name, value := range telemetry.Vars {
 		vars[name] = value
 	}
-	if telemetry.BatteryPower != nil {
+	if packKnown {
 		switch {
-		case *telemetry.BatteryPower > 0:
+		case packWatts > 0:
 			vars["battery.charger.status"] = "charging"
-		case *telemetry.BatteryPower < 0:
+		case packWatts < 0:
 			vars["battery.charger.status"] = "discharging"
 		default:
 			vars["battery.charger.status"] = "resting"
@@ -556,6 +557,38 @@ func identityVars(device config.Device, fallbackModel string, serial string, sta
 		"ups.status":            status,
 		"ups.realpower.nominal": "0",
 	}
+}
+
+// packPower is the pack's watts, positive charging: the device's own
+// reading when it sends one (pow_get_bms), else the input and output sums
+// netted. Not every model reports the pack (a DELTA 3 Max Plus does not),
+// and the sums are in every display message. On battery the output is the
+// pack's by definition; on the grid a dead band of 5 % (at least 10 W)
+// covers the conversion losses of a full pack in bypass, which read as a
+// few watts more out than in.
+func packPower(t Telemetry) (int, bool) {
+	if t.BatteryPower != nil {
+		return *t.BatteryPower, true
+	}
+	if t.InputPower == nil || t.OutputPower == nil {
+		return 0, false
+	}
+	in, out := *t.InputPower, *t.OutputPower
+	if t.InputPresent != nil && !*t.InputPresent && out > 0 {
+		return -out, true
+	}
+	band := in
+	if out > band {
+		band = out
+	}
+	band /= 20
+	if band < 10 {
+		band = 10
+	}
+	if net := in - out; net >= band || net <= -band {
+		return net, true
+	}
+	return 0, true
 }
 
 // lowBatteryTracker decides LB. The charge threshold is immediate. The

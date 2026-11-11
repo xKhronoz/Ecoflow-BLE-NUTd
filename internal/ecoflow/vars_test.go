@@ -170,6 +170,45 @@ func TestLoadFollowsPartialUpdates(t *testing.T) {
 	}
 }
 
+// A model that does not report the pack's own watts: charging and
+// discharging come from the input and output sums, with a dead band for a
+// full pack in bypass.
+func TestChargeStateFromPowerSumsWhenPackWattsAbsent(t *testing.T) {
+	device := config.Device{Name: "ups"}
+	cases := []struct {
+		name          string
+		msg           *pd335pb.DisplayPropertyUpload
+		status, state string
+	}{
+		{"charging on the grid", &pd335pb.DisplayPropertyUpload{
+			PowInSumW: proto.Float32(872), PowOutSumW: proto.Float32(171), PlugInInfoAcChargerFlag: proto.Bool(true),
+		}, "OL CHRG", "charging"},
+		{"full, in bypass", &pd335pb.DisplayPropertyUpload{
+			PowInSumW: proto.Float32(205), PowOutSumW: proto.Float32(207), PlugInInfoAcChargerFlag: proto.Bool(true),
+		}, "OL", "resting"},
+		{"on battery", &pd335pb.DisplayPropertyUpload{
+			PowInSumW: proto.Float32(0), PowOutSumW: proto.Float32(181), PlugInInfoAcChargerFlag: proto.Bool(false),
+		}, "OB DISCHRG", "discharging"},
+		{"on battery, a few watts", &pd335pb.DisplayPropertyUpload{
+			PowInSumW: proto.Float32(0), PowOutSumW: proto.Float32(4), PlugInInfoAcChargerFlag: proto.Bool(false),
+		}, "OB DISCHRG", "discharging"},
+		{"the pack's own watts win", &pd335pb.DisplayPropertyUpload{
+			PowInSumW: proto.Float32(872), PowOutSumW: proto.Float32(171), PlugInInfoAcChargerFlag: proto.Bool(true), PowGetBms: proto.Float32(-5),
+		}, "OL DISCHRG", "discharging"},
+	}
+	for _, c := range cases {
+		vars := liveVars(device, DeviceDescriptor{}, telemetryFromProto(c.msg), false)
+		if vars["ups.status"] != c.status || vars["battery.charger.status"] != c.state {
+			t.Errorf("%s: status=%q charger=%q, want %q and %q", c.name, vars["ups.status"], vars["battery.charger.status"], c.status, c.state)
+		}
+	}
+	// Only one sum known: nothing is claimed.
+	vars := liveVars(device, DeviceDescriptor{}, telemetryFromProto(&pd335pb.DisplayPropertyUpload{PowOutSumW: proto.Float32(100)}), false)
+	if _, ok := vars["battery.charger.status"]; ok || vars["ups.status"] != "OB" {
+		t.Errorf("with one sum: status=%q charger=%q", vars["ups.status"], vars["battery.charger.status"])
+	}
+}
+
 // The inverter's temperature comes in the rarer runtime message; the
 // display message that follows every second must not replace it with the
 // MOSFET fallback.
