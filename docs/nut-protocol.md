@@ -14,6 +14,37 @@
 | input watts                 | `input.power`     |
 | output watts                | `output.power`    |
 
+### Further variables from the property profiles
+
+The RIVER 3, DELTA 3 and DELTA Pro 3 families push a `DisplayPropertyUpload` message about once a second; the profiles map what it carries onto standard NUT names. A model yields the fields its message has, nothing is invented for a missing one.
+
+| EcoFlow reading (display message)        | NUT variable                                          |
+| ---------------------------------------- | ----------------------------------------------------- |
+| AC input frequency, watts                | `input.frequency`, `input.realpower`                  |
+| total output watts                       | `ups.realpower`                                       |
+| rated AC output (`rated_power_watts` when the device reports none) | `ups.realpower.nominal`     |
+| hottest cell                             | `battery.temperature`                                 |
+| design capacity (Ah)                     | `battery.capacity.nominal`                            |
+| discharge floor from the app (percent)   | `experimental.battery.charge.minimum`                 |
+| pack charging / discharging (`pow_get_bms`, else input minus output) | append `CHRG` / `DISCHRG`; `battery.charger.status` |
+| one outlet per port                      | `outlet.N.desc`, `outlet.N.realpower`, `outlet.N.status` |
+
+For `eco-ble`, `battery.charge.low` reports the configured `low_battery_percent` threshold that sets `LB`. The device's discharge floor from the app is a separate limit, exposed as `experimental.battery.charge.minimum` when reported. Charging status uses the pack's watts when available, else the total input minus output, including solar and car input. `OB` means no AC input and can coexist with `CHRG` while charging from DC.
+
+Outlet numbers are fixed per port so a reading keeps its meaning across models and partial updates: 1 AC, 2 AC 2 (second AC group), 3-5 USB-C, 6-7 USB-A, 8 12 V car socket, 9 12 V Anderson. A port the model lacks never appears; the Anderson port appears only when the device reports a second 12 V group, since it shares the 12 V switch with the car socket. Once detected during a BLE session, it follows shared switch updates even when a later message omits the group list.
+
+Two variables are derived after partial updates are merged, so the readings behind them need not arrive in the same message: `ups.load` is `ups.realpower` as a percentage of `ups.realpower.nominal`, and `ups.temperature` is the inverter's AC stage when a runtime message has given it, else the BMS MOSFETs from the display message.
+
+**Conditional:** the same families define a `RuntimePropertyUpload` message with the electrical detail below. It is decoded whenever a device sends it, but no way to make a device push it over Bluetooth is known yet (a `ConfigWrite` of the `cfg_runtime_property_*_upload_period` fields is neither acknowledged nor acted on by a DELTA 3 Max Plus), so these variables should be expected to be absent.
+
+| EcoFlow reading (runtime message)        | NUT variable                                          |
+| ---------------------------------------- | ----------------------------------------------------- |
+| AC input volts, amps                     | `input.voltage`, `input.current`                      |
+| AC output volts, amps, frequency         | `output.voltage`, `output.current`, `output.frequency` |
+| pack volts, amps, full capacity (Ah)     | `battery.voltage`, `battery.current`, `battery.capacity` |
+| inverter AC stage temperature            | `ups.temperature` (preferred over the MOSFET reading) |
+| 12 V rail volts, amps                    | `outlet.8.voltage`, `outlet.8.current`                |
+
 ## Command coverage
 
 Current command coverage:

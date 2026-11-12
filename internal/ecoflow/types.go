@@ -38,6 +38,18 @@ type Telemetry struct {
 	InputPower     *int
 	OutputPower    *int
 	InputPresent   *bool
+	// BatteryPower is the pack's own watts: positive charging, negative
+	// discharging. It drives the CHRG/DISCHRG status tokens.
+	BatteryPower *int
+	// The two readings behind ups.temperature, kept apart so that a display
+	// message cannot overwrite what a runtime message gave: the inverter's
+	// AC stage (temp_pcs_ac) is preferred, the BMS MOSFETs (bms_max_mos_temp)
+	// stand in while it is unknown.
+	InverterTemperature *int
+	MOSFETTemperature   *int
+	// Vars are further NUT variables the profile could decode, already
+	// formatted (extendedVars): the AC side, the battery, outlets.
+	Vars map[string]string
 }
 
 func (t Telemetry) Clone() Telemetry {
@@ -47,6 +59,11 @@ func (t Telemetry) Clone() Telemetry {
 		InputPower:     cloneInt(t.InputPower),
 		OutputPower:    cloneInt(t.OutputPower),
 		InputPresent:   cloneBool(t.InputPresent),
+		BatteryPower:   cloneInt(t.BatteryPower),
+		Vars:           cloneVars(t.Vars),
+
+		InverterTemperature: cloneInt(t.InverterTemperature),
+		MOSFETTemperature:   cloneInt(t.MOSFETTemperature),
 	}
 }
 
@@ -67,11 +84,30 @@ func (t Telemetry) Merge(other Telemetry) Telemetry {
 	if other.InputPresent != nil {
 		out.InputPresent = cloneBool(other.InputPresent)
 	}
+	if other.BatteryPower != nil {
+		out.BatteryPower = cloneInt(other.BatteryPower)
+	}
+	if other.InverterTemperature != nil {
+		out.InverterTemperature = cloneInt(other.InverterTemperature)
+	}
+	if other.MOSFETTemperature != nil {
+		out.MOSFETTemperature = cloneInt(other.MOSFETTemperature)
+	}
+	if len(other.Vars) > 0 {
+		if out.Vars == nil {
+			out.Vars = map[string]string{}
+		}
+		for name, value := range other.Vars {
+			out.Vars[name] = value
+		}
+	}
 	return out
 }
 
 func (t Telemetry) Empty() bool {
-	return t.Charge == nil && t.RuntimeSeconds == nil && t.InputPower == nil && t.OutputPower == nil && t.InputPresent == nil
+	return t.Charge == nil && t.RuntimeSeconds == nil && t.InputPower == nil && t.OutputPower == nil &&
+		t.InputPresent == nil && t.BatteryPower == nil && t.InverterTemperature == nil &&
+		t.MOSFETTemperature == nil && len(t.Vars) == 0
 }
 
 type DeviceDescriptor struct {
@@ -239,6 +275,17 @@ func cloneInt(v *int) *int {
 	}
 	x := *v
 	return &x
+}
+
+func cloneVars(v map[string]string) map[string]string {
+	if v == nil {
+		return nil
+	}
+	out := make(map[string]string, len(v))
+	for name, value := range v {
+		out[name] = value
+	}
+	return out
 }
 
 func cloneBool(v *bool) *bool {

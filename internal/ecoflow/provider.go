@@ -7,6 +7,8 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"math"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -150,6 +152,8 @@ func (p *Provider) runSession(ctx context.Context, store *state.Store, device co
 	var lastFresh time.Time
 	isStale := true
 	var latestTelemetry Telemetry
+	var low lowBatteryTracker
+	ignoredKinds := map[[3]byte]struct{}{}
 
 	processPacket := func(packet Packet) error {
 		if desc.SupportsTime && isTimeRequest(packet) {
@@ -170,6 +174,15 @@ func (p *Provider) runSession(ctx context.Context, store *state.Store, device co
 			return err
 		}
 		if !handled {
+			// Once per kind per connection: what the device sends that no
+			// profile decodes yet, so a missing message is a log line away.
+			kind := [3]byte{packet.Src, packet.CmdSet, packet.CmdID}
+			if _, seen := ignoredKinds[kind]; !seen {
+				ignoredKinds[kind] = struct{}{}
+				slog.Info("eco-ble packet kind not decoded", "device", device.Name,
+					"src", fmt.Sprintf("0x%02x", packet.Src), "cmd_set", fmt.Sprintf("0x%02x", packet.CmdSet),
+					"cmd_id", fmt.Sprintf("0x%02x", packet.CmdID), "bytes", len(packet.Payload))
+			}
 			return nil
 		}
 		for _, outboundPacket := range outbound {
@@ -183,7 +196,8 @@ func (p *Provider) runSession(ctx context.Context, store *state.Store, device co
 		lastFresh = time.Now()
 		isStale = false
 		latestTelemetry = latestTelemetry.Merge(*telemetry)
-		store.Upsert(device.Name, device.Description, liveVars(device, desc, latestTelemetry))
+		store.Upsert(device.Name, device.Description,
+			liveVars(device, desc, latestTelemetry, low.Low(device, latestTelemetry, time.Now())))
 		return nil
 	}
 
@@ -447,15 +461,50 @@ func authErrorFromPayload(payload []byte) error {
 	}
 }
 
-func liveVars(device config.Device, desc DeviceDescriptor, telemetry Telemetry) map[string]string {
+// liveVars is the NUT variable set for one telemetry snapshot; low is the
+// tracker's verdict for it (lowBatteryTracker.Low).
+func liveVars(device config.Device, desc DeviceDescriptor, telemetry Telemetry, low bool) map[string]string {
 	status := "OB"
 	if telemetry.InputPresent != nil && *telemetry.InputPresent {
 		status = "OL"
 	}
-	if lowBattery(device, telemetry) {
+	if low {
 		status += " LB"
 	}
+	packWatts, packKnown := packPower(telemetry)
+	if packKnown {
+		switch {
+		case packWatts > 0:
+			status += " CHRG"
+		case packWatts < 0:
+			status += " DISCHRG"
+		}
+	}
 	vars := identityVars(device, desc.Model, desc.Serial, status)
+	// The profile's extra variables first: the core ones below win, and a
+	// rated output from the device replaces the placeholder nominal.
+	for name, value := range telemetry.Vars {
+		vars[name] = value
+	}
+	// The device's discharge floor is separate from the daemon's LB threshold.
+	vars["battery.charge.low"] = state.FormatInt(device.LowBatteryPercent)
+	// A second 12 V list slot establishes the Anderson port for this session.
+	// Both ports share a switch, which may arrive without the list later.
+	if _, present := vars["outlet.9.desc"]; present {
+		if outletStatus, known := vars["outlet.8.status"]; known {
+			vars["outlet.9.status"] = outletStatus
+		}
+	}
+	if packKnown {
+		switch {
+		case packWatts > 0:
+			vars["battery.charger.status"] = "charging"
+		case packWatts < 0:
+			vars["battery.charger.status"] = "discharging"
+		default:
+			vars["battery.charger.status"] = "resting"
+		}
+	}
 	if telemetry.Charge != nil {
 		vars["battery.charge"] = state.FormatInt(*telemetry.Charge)
 	}
@@ -467,6 +516,24 @@ func liveVars(device config.Device, desc DeviceDescriptor, telemetry Telemetry) 
 	}
 	if telemetry.OutputPower != nil {
 		vars["output.power"] = state.FormatInt(*telemetry.OutputPower)
+	}
+	// Derived after the merge, so that two readings need not share a
+	// message: the load from the latest output and the latest rating (the
+	// device's, else the config's), the UPS temperature from the inverter's
+	// AC stage once a runtime message has given it, else the BMS MOSFETs.
+	nominal, _ := strconv.Atoi(vars["ups.realpower.nominal"])
+	if nominal <= 0 && device.RatedPowerWatts > 0 {
+		nominal = device.RatedPowerWatts
+		vars["ups.realpower.nominal"] = state.FormatInt(nominal)
+	}
+	if nominal > 0 && telemetry.OutputPower != nil {
+		vars["ups.load"] = state.FormatInt(clampNonNegative(int(math.Round(float64(*telemetry.OutputPower) * 100 / float64(nominal)))))
+	}
+	switch {
+	case telemetry.InverterTemperature != nil:
+		vars["ups.temperature"] = state.FormatInt(*telemetry.InverterTemperature)
+	case telemetry.MOSFETTemperature != nil:
+		vars["ups.temperature"] = state.FormatInt(*telemetry.MOSFETTemperature)
 	}
 	return vars
 }
@@ -501,12 +568,67 @@ func identityVars(device config.Device, fallbackModel string, serial string, sta
 	}
 }
 
-func lowBattery(device config.Device, telemetry Telemetry) bool {
+// packPower is the pack's watts, positive charging: the device's own
+// reading when it sends one (pow_get_bms), else the input and output sums
+// netted. Not every model reports the pack (a DELTA 3 Max Plus does not),
+// and the sums are in every display message. With zero total input, even
+// a small output drains the pack. Otherwise, net all input sources (AC,
+// solar, car) with a dead band of 5 % (at least 10 W) to cover conversion
+// losses, including a full pack in bypass.
+func packPower(t Telemetry) (int, bool) {
+	if t.BatteryPower != nil {
+		return *t.BatteryPower, true
+	}
+	if t.InputPower == nil || t.OutputPower == nil {
+		return 0, false
+	}
+	in, out := *t.InputPower, *t.OutputPower
+	if in == 0 && out > 0 {
+		return -out, true
+	}
+	band := in
+	if out > band {
+		band = out
+	}
+	band /= 20
+	if band < 10 {
+		band = 10
+	}
+	if net := in - out; net >= band || net <= -band {
+		return net, true
+	}
+	return 0, true
+}
+
+// lowBatteryTracker decides LB. The charge threshold is immediate. The
+// runtime threshold needs the device discharging, a charge at or below
+// LowRuntimeMaxPercent, and LowRuntimeGraceSeconds of it without a break:
+// the device's estimate is stale right after a switch to battery and
+// noisy under a changing load, and one bad second must not shut hosts down.
+type lowBatteryTracker struct {
+	runtimeLowSince time.Time
+}
+
+func (l *lowBatteryTracker) Low(device config.Device, telemetry Telemetry, now time.Time) bool {
 	if telemetry.Charge != nil && *telemetry.Charge <= device.LowBatteryPercent {
+		l.runtimeLowSince = time.Time{}
 		return true
 	}
-	if telemetry.RuntimeSeconds != nil && *telemetry.RuntimeSeconds <= device.LowRuntimeSeconds {
-		return true
+	// AC presence alone cannot distinguish solar charging from discharge.
+	// Prefer the pack's power or the net sums; retain the AC-state fallback
+	// for snapshots that do not have enough power readings yet.
+	discharging := telemetry.InputPresent == nil || !*telemetry.InputPresent
+	if watts, known := packPower(telemetry); known {
+		discharging = watts < 0
 	}
-	return false
+	plausible := telemetry.Charge == nil || *telemetry.Charge <= device.LowRuntimeMaxPercent
+	runtimeLow := telemetry.RuntimeSeconds != nil && *telemetry.RuntimeSeconds <= device.LowRuntimeSeconds
+	if !(discharging && plausible && runtimeLow) {
+		l.runtimeLowSince = time.Time{}
+		return false
+	}
+	if l.runtimeLowSince.IsZero() {
+		l.runtimeLowSince = now
+	}
+	return now.Sub(l.runtimeLowSince) >= time.Duration(device.LowRuntimeGraceSeconds)*time.Second
 }

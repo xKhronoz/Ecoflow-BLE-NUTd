@@ -34,13 +34,37 @@ devices:
     model: DELTA 2
     mac: AA:BB:CC:DD:EE:01
     low_battery_percent: 20
+    rated_power_watts: 1800
     low_runtime_seconds: 300
+    low_runtime_max_percent: 50
+    low_runtime_grace_seconds: 60
     stale_timeout_seconds: 60
 ```
 
 The [native configuration example](../examples/ecoflow-ble-nutd.conf) and [Docker configuration example](../deploy/docker/ecoflow-ble-nutd.conf.example) contain the same daemon settings with different web bind addresses.
 
 NUT discovery and telemetry reads are available without authentication, including when `auth.username` and `auth.password` are set. These credentials protect NUT session/control commands and the web UI/API. Clients such as pfSense `upsmon` should use these top-level credentials; `provider.auth` is only for EcoFlow authentication. See [NUT protocol coverage](nut-protocol.md) for the supported commands.
+
+### Device monitoring settings
+
+Set these values separately for each entry under `devices`. The table describes the `eco-ble` provider. They control the telemetry and status reported to monitoring clients; client configuration determines notifications and shutdown actions.
+
+| Setting | Default | Effect on monitoring | Effect of changing the value |
+| --- | --- | --- | --- |
+| `low_battery_percent` | `20` (%) | Immediately adds `LB` (low battery) to `ups.status` when a reported charge is at or below this percentage, including while charging. Also published as `battery.charge.low`. The runtime grace period does not delay this threshold. | A higher percentage warns earlier and leaves more charge available for shutdown. A lower percentage delays the warning. |
+| `rated_power_watts` | `0` (unset) | Fallback output rating for `ups.realpower.nominal` when the device reports no positive rating. Used to calculate `ups.load` as output watts divided by the rating, multiplied by 100 and rounded. A positive device rating takes priority. | Set it to the unit's rated AC output. `1800` is an example, not a universal default: 900 W output with a 1800 W rating reports 50% load. A rating that is too high understates load; one that is too low overstates it. Without either rating, `ups.load` is absent. |
+| `low_runtime_seconds` | `300` (5 minutes) | Runtime at or below this value can trigger `LB`, but only while discharging, within the charge ceiling below, and after the grace period. The reported `battery.runtime` remains the device's estimate. | A higher value allows an earlier runtime warning. A lower value waits until less estimated runtime remains. |
+| `low_runtime_max_percent` | `50` (%) | Allows runtime to trigger `LB` only when the reported charge is at or below this percentage. This rejects implausibly short runtime estimates at high charge. The ceiling is not applied until a charge reading is known. | Raising it allows runtime warnings at higher charge levels. Lowering it restricts runtime warnings to a more depleted battery. It does not change the immediate `low_battery_percent` threshold. |
+| `low_runtime_grace_seconds` | `60` (1 minute) | Requires the runtime warning conditions to hold continuously for this duration before setting `LB`. Charging, resting, a runtime above the threshold, or a known charge above the ceiling resets the timer. | A longer grace period filters more transient estimates but delays the warning. A shorter period responds faster to low runtime. |
+| `stale_timeout_seconds` | `60` (1 minute) | After this long without fresh decoded telemetry, reports `ups.status=WAIT` and removes dynamic readings such as charge, runtime, and watts. Checked on `provider.poll_seconds` ticks; a disconnection can cause `WAIT` sooner. | A shorter timeout identifies missing telemetry sooner but is more sensitive to brief gaps. A longer timeout tolerates gaps while retaining older readings for longer. |
+
+For the five threshold and timeout settings, an omitted, zero, or negative value selects the default; zero does not disable the setting. `rated_power_watts` supplies a fallback only when positive.
+
+With the example values, discharging at 40% charge with an estimated 240 seconds remaining sets `LB` after those conditions persist for 60 seconds. At 80% charge, that same runtime estimate does not trigger `LB`. At 20% charge or below, the charge threshold sets `LB` immediately, even while charging.
+
+Discharge is determined from the battery's own power reading when available, else the balance of total input and output power, including solar and car input. AC presence is the fallback when power readings are missing. The discharge floor set in the EcoFlow app is a separate device limit, exposed as `experimental.battery.charge.minimum` when reported.
+
+The `mock` and `json-dir` providers use `low_battery_percent` and `low_runtime_seconds`, applying either threshold immediately. They do not use the BLE runtime guards, rating fallback, or stale timeout described above.
 
 ## Web status and control
 

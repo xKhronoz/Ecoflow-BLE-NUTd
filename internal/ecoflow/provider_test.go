@@ -191,7 +191,8 @@ func TestRunSessionPublishesTelemetryAndTransitionsToWAIT(t *testing.T) {
 
 	waitForCondition(t, 1500*time.Millisecond, func() bool {
 		ups, ok := store.Get(device.Name)
-		return ok && ups.Vars["battery.charge"] == "74" && ups.Vars["ups.status"] == "OL"
+		// 120 W in, 85 W out: on the grid and charging, from the sums.
+		return ok && ups.Vars["battery.charge"] == "74" && ups.Vars["ups.status"] == "OL CHRG"
 	})
 	waitForCondition(t, 1800*time.Millisecond, func() bool {
 		ups, ok := store.Get(device.Name)
@@ -473,8 +474,12 @@ func TestRunSessionRetainsPartialTelemetry(t *testing.T) {
 		return ok && u.Vars["output.power"] == "42"
 	})
 	u, _ := store.Get(device.Name)
-	if u.Vars["ups.status"] != "OL" || u.Vars["battery.charge"] != "74" || u.Vars["battery.runtime"] != "1800" || u.Vars["input.power"] != "120" {
+	// The merged sums (120 W in, 42 W out) also say the pack is charging.
+	if u.Vars["ups.status"] != "OL CHRG" || u.Vars["battery.charge"] != "74" || u.Vars["battery.runtime"] != "1800" || u.Vars["input.power"] != "120" {
 		t.Fatalf("partial telemetry discarded prior state: %#v", u.Vars)
+	}
+	if u.Vars["battery.charger.status"] != "charging" {
+		t.Fatalf("battery.charger.status = %q, want charging from the merged sums", u.Vars["battery.charger.status"])
 	}
 }
 
