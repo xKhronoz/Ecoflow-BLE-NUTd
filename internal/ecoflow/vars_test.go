@@ -1,7 +1,9 @@
 package ecoflow
 
 import (
+	"strconv"
 	"testing"
+	"time"
 
 	"github.com/xkhronoz/ecoflow-ble-nutd/internal/config"
 	"github.com/xkhronoz/ecoflow-ble-nutd/internal/ecoflow/pb/mr521pb"
@@ -36,21 +38,21 @@ func TestExtendedVarsFromDelta3Display(t *testing.T) {
 		t.Fatalf("battery power = %v, want 80", telemetry.BatteryPower)
 	}
 	want := map[string]string{
-		"input.frequency":          "50",
-		"input.realpower":          "210",
-		"ups.realpower":            "127",
-		"ups.realpower.nominal":    "2000",
-		"battery.temperature":      "31",
-		"battery.capacity.nominal": "40.0",
-		"battery.charge.low":       "20",
-		"outlet.1.desc":            "AC 1",
-		"outlet.1.realpower":       "100",
-		"outlet.1.status":          "on",
-		"outlet.3.desc":            "USB-C 1",
-		"outlet.3.realpower":       "26",
-		"outlet.3.status":          "on",
-		"outlet.6.desc":            "USB-A 1",
-		"outlet.6.status":          "off",
+		"input.frequency":                     "50",
+		"input.realpower":                     "210",
+		"ups.realpower":                       "127",
+		"ups.realpower.nominal":               "2000",
+		"battery.temperature":                 "31",
+		"battery.capacity.nominal":            "40.0",
+		"experimental.battery.charge.minimum": "20",
+		"outlet.1.desc":                       "AC 1",
+		"outlet.1.realpower":                  "100",
+		"outlet.1.status":                     "on",
+		"outlet.3.desc":                       "USB-C 1",
+		"outlet.3.realpower":                  "26",
+		"outlet.3.status":                     "on",
+		"outlet.6.desc":                       "USB-A 1",
+		"outlet.6.status":                     "off",
 	}
 	for name, value := range want {
 		if got := telemetry.Vars[name]; got != value {
@@ -209,6 +211,64 @@ func TestChargeStateFromPowerSumsWhenPackWattsAbsent(t *testing.T) {
 	}
 }
 
+func TestChargeStateFromDCInput(t *testing.T) {
+	cases := []struct {
+		name          string
+		input, output float32
+		packWatts     int
+		status, state string
+	}{
+		{"solar charging", 500, 100, 400, "OB CHRG", "charging"},
+		{"car charging", 120, 40, 80, "OB CHRG", "charging"},
+		{"solar below load", 100, 500, -400, "OB DISCHRG", "discharging"},
+		{"balanced DC input", 100, 100, 0, "OB", "resting"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			telemetry := telemetryFromProto(&pd335pb.DisplayPropertyUpload{
+				PowInSumW: proto.Float32(tc.input), PowOutSumW: proto.Float32(tc.output),
+				PlugInInfoAcChargerFlag: proto.Bool(false),
+			})
+			if watts, known := packPower(telemetry); !known || watts != tc.packWatts {
+				t.Errorf("pack power = %d (known=%v), want %d", watts, known, tc.packWatts)
+			}
+			vars := liveVars(config.Device{Name: "ups"}, DeviceDescriptor{}, telemetry, false)
+			if vars["ups.status"] != tc.status || vars["battery.charger.status"] != tc.state {
+				t.Errorf("status=%q charger=%q, want %q and %q", vars["ups.status"], vars["battery.charger.status"], tc.status, tc.state)
+			}
+		})
+	}
+}
+
+func TestLowChargeVariableUsesConfiguredThreshold(t *testing.T) {
+	device := config.Device{Name: "ups", LowBatteryPercent: 20}
+	var telemetry Telemetry
+	var tracker lowBatteryTracker
+	now := time.Unix(1_700_000_000, 0)
+	for _, floor := range []*uint32{nil, proto.Uint32(0), proto.Uint32(30)} {
+		telemetry = telemetry.Merge(telemetryFromProto(&pd335pb.DisplayPropertyUpload{
+			CmsBattSoc: proto.Float32(20), CmsMinDsgSoc: floor,
+		}))
+		vars := liveVars(device, DeviceDescriptor{}, telemetry, tracker.Low(device, telemetry, now))
+		if vars["battery.charge.low"] != "20" || vars["ups.status"] != "OB LB" {
+			t.Errorf("threshold=%q status=%q, want 20 and OB LB", vars["battery.charge.low"], vars["ups.status"])
+		}
+		minimum, present := vars["experimental.battery.charge.minimum"]
+		if floor == nil {
+			if present {
+				t.Error("device discharge floor should be absent until reported")
+			}
+		} else if want := strconv.Itoa(int(*floor)); !present || minimum != want {
+			t.Errorf("device discharge floor=%q, want %q", minimum, want)
+		}
+	}
+	device.LowBatteryPercent = 25
+	vars := liveVars(device, DeviceDescriptor{}, telemetry, tracker.Low(device, telemetry, now))
+	if vars["battery.charge.low"] != "25" {
+		t.Errorf("threshold=%q, want configured value 25", vars["battery.charge.low"])
+	}
+}
+
 // The inverter's temperature comes in the rarer runtime message; the
 // display message that follows every second must not replace it with the
 // MOSFET fallback.
@@ -310,6 +370,51 @@ func TestTwelveVoltOutletsFromList(t *testing.T) {
 	}
 }
 
+func TestTwelveVoltOutletsFollowSharedSwitchAcrossUpdates(t *testing.T) {
+	list := &pd335pb.PowGet12VList{PowGet_12VItem: []float32{-20, -10}}
+	cases := []struct {
+		name     string
+		messages []*pd335pb.DisplayPropertyUpload
+	}{
+		{"list and switch together", []*pd335pb.DisplayPropertyUpload{
+			{PowGet_12VList: list, FlowInfo_12V: proto.Uint32(2)},
+		}},
+		{"switch before list", []*pd335pb.DisplayPropertyUpload{
+			{FlowInfo_12V: proto.Uint32(2)}, {PowGet_12VList: list},
+		}},
+		{"list before switch", []*pd335pb.DisplayPropertyUpload{
+			{PowGet_12VList: list}, {FlowInfo_12V: proto.Uint32(2)},
+		}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var telemetry Telemetry
+			for _, msg := range tc.messages {
+				telemetry = telemetry.Merge(telemetryFromProto(msg))
+			}
+			for _, flow := range []uint32{2, 0, 2} {
+				telemetry = telemetry.Merge(telemetryFromProto(&pd335pb.DisplayPropertyUpload{
+					FlowInfo_12V: proto.Uint32(flow),
+				}))
+				vars := liveVars(config.Device{Name: "ups"}, DeviceDescriptor{}, telemetry, false)
+				want := "off"
+				if flow == 2 {
+					want = "on"
+				}
+				if vars["outlet.8.status"] != want || vars["outlet.9.status"] != want {
+					t.Errorf("shared switch: car=%q Anderson=%q, want both %q", vars["outlet.8.status"], vars["outlet.9.status"], want)
+				}
+			}
+		})
+	}
+	// A new session must not inherit the previous device's Anderson port.
+	telemetry := telemetryFromProto(&pd335pb.DisplayPropertyUpload{FlowInfo_12V: proto.Uint32(2)})
+	vars := liveVars(config.Device{Name: "ups"}, DeviceDescriptor{}, telemetry, false)
+	if _, present := vars["outlet.9.status"]; present {
+		t.Error("shared switch created an Anderson outlet without a second list slot")
+	}
+}
+
 // A RIVER 3: one AC group, two USB-C, two USB-A, one 12 V socket behind the
 // switch, no per-group lists. Nothing beyond that may appear.
 func TestExtendedVarsFromRiver3Display(t *testing.T) {
@@ -335,23 +440,23 @@ func TestExtendedVarsFromRiver3Display(t *testing.T) {
 		CmsMinDsgSoc:             proto.Uint32(0),
 	})
 	want := map[string]string{
-		"ups.realpower":            "86",
-		"ups.realpower.nominal":    "300",
-		"battery.temperature":      "27",
-		"battery.capacity.nominal": "20.0",
-		"battery.charge.low":       "0",
-		"outlet.1.desc":            "AC 1",
-		"outlet.1.realpower":       "60",
-		"outlet.1.status":          "on",
-		"outlet.3.desc":            "USB-C 1",
-		"outlet.3.realpower":       "18",
-		"outlet.4.desc":            "USB-C 2",
-		"outlet.4.status":          "off",
-		"outlet.6.desc":            "USB-A 1",
-		"outlet.6.realpower":       "7",
-		"outlet.8.desc":            "12 V car",
-		"outlet.8.realpower":       "0",
-		"outlet.8.status":          "off",
+		"ups.realpower":                       "86",
+		"ups.realpower.nominal":               "300",
+		"battery.temperature":                 "27",
+		"battery.capacity.nominal":            "20.0",
+		"experimental.battery.charge.minimum": "0",
+		"outlet.1.desc":                       "AC 1",
+		"outlet.1.realpower":                  "60",
+		"outlet.1.status":                     "on",
+		"outlet.3.desc":                       "USB-C 1",
+		"outlet.3.realpower":                  "18",
+		"outlet.4.desc":                       "USB-C 2",
+		"outlet.4.status":                     "off",
+		"outlet.6.desc":                       "USB-A 1",
+		"outlet.6.realpower":                  "7",
+		"outlet.8.desc":                       "12 V car",
+		"outlet.8.realpower":                  "0",
+		"outlet.8.status":                     "off",
 	}
 	for name, value := range want {
 		if got := telemetry.Vars[name]; got != value {

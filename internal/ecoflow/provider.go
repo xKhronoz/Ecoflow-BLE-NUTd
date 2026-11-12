@@ -486,6 +486,15 @@ func liveVars(device config.Device, desc DeviceDescriptor, telemetry Telemetry, 
 	for name, value := range telemetry.Vars {
 		vars[name] = value
 	}
+	// The device's discharge floor is separate from the daemon's LB threshold.
+	vars["battery.charge.low"] = state.FormatInt(device.LowBatteryPercent)
+	// A second 12 V list slot establishes the Anderson port for this session.
+	// Both ports share a switch, which may arrive without the list later.
+	if _, present := vars["outlet.9.desc"]; present {
+		if outletStatus, known := vars["outlet.8.status"]; known {
+			vars["outlet.9.status"] = outletStatus
+		}
+	}
 	if packKnown {
 		switch {
 		case packWatts > 0:
@@ -562,10 +571,10 @@ func identityVars(device config.Device, fallbackModel string, serial string, sta
 // packPower is the pack's watts, positive charging: the device's own
 // reading when it sends one (pow_get_bms), else the input and output sums
 // netted. Not every model reports the pack (a DELTA 3 Max Plus does not),
-// and the sums are in every display message. On battery the output is the
-// pack's by definition; on the grid a dead band of 5 % (at least 10 W)
-// covers the conversion losses of a full pack in bypass, which read as a
-// few watts more out than in.
+// and the sums are in every display message. With zero total input, even
+// a small output drains the pack. Otherwise, net all input sources (AC,
+// solar, car) with a dead band of 5 % (at least 10 W) to cover conversion
+// losses, including a full pack in bypass.
 func packPower(t Telemetry) (int, bool) {
 	if t.BatteryPower != nil {
 		return *t.BatteryPower, true
@@ -574,7 +583,7 @@ func packPower(t Telemetry) (int, bool) {
 		return 0, false
 	}
 	in, out := *t.InputPower, *t.OutputPower
-	if t.InputPresent != nil && !*t.InputPresent && out > 0 {
+	if in == 0 && out > 0 {
 		return -out, true
 	}
 	band := in
@@ -602,9 +611,16 @@ type lowBatteryTracker struct {
 
 func (l *lowBatteryTracker) Low(device config.Device, telemetry Telemetry, now time.Time) bool {
 	if telemetry.Charge != nil && *telemetry.Charge <= device.LowBatteryPercent {
+		l.runtimeLowSince = time.Time{}
 		return true
 	}
+	// AC presence alone cannot distinguish solar charging from discharge.
+	// Prefer the pack's power or the net sums; retain the AC-state fallback
+	// for snapshots that do not have enough power readings yet.
 	discharging := telemetry.InputPresent == nil || !*telemetry.InputPresent
+	if watts, known := packPower(telemetry); known {
+		discharging = watts < 0
+	}
 	plausible := telemetry.Charge == nil || *telemetry.Charge <= device.LowRuntimeMaxPercent
 	runtimeLow := telemetry.RuntimeSeconds != nil && *telemetry.RuntimeSeconds <= device.LowRuntimeSeconds
 	if !(discharging && plausible && runtimeLow) {

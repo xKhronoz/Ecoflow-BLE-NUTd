@@ -44,3 +44,65 @@ func TestLowBatteryTracker(t *testing.T) {
 		t.Fatal("no LB at the charge threshold")
 	}
 }
+
+func TestLowBatteryTrackerUsesBatteryPower(t *testing.T) {
+	device := config.Device{LowBatteryPercent: 20, LowRuntimeSeconds: 300, LowRuntimeMaxPercent: 50, LowRuntimeGraceSeconds: 60}
+	cases := []struct {
+		name      string
+		telemetry Telemetry
+		wantLow   bool
+	}{
+		{"pack charging without AC", Telemetry{BatteryPower: intPtr(400), InputPresent: boolPtr(false)}, false},
+		{"pack charging without AC state", Telemetry{BatteryPower: intPtr(400)}, false},
+		{"pack resting without AC", Telemetry{BatteryPower: intPtr(0), InputPresent: boolPtr(false)}, false},
+		{"pack discharging with AC", Telemetry{BatteryPower: intPtr(-100), InputPresent: boolPtr(true)}, true},
+		{"solar charging from sums", Telemetry{InputPower: intPtr(500), OutputPower: intPtr(100), InputPresent: boolPtr(false)}, false},
+		{"balanced DC sums", Telemetry{InputPower: intPtr(100), OutputPower: intPtr(100), InputPresent: boolPtr(false)}, false},
+		{"solar below load", Telemetry{InputPower: intPtr(100), OutputPower: intPtr(500), InputPresent: boolPtr(false)}, true},
+		{"battery output without input", Telemetry{InputPower: intPtr(0), OutputPower: intPtr(4), InputPresent: boolPtr(false)}, true},
+		{"AC fallback without power readings", Telemetry{InputPresent: boolPtr(true)}, false},
+		{"battery fallback without power readings", Telemetry{InputPresent: boolPtr(false)}, true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			telemetry := tc.telemetry
+			telemetry.Charge = intPtr(40)
+			telemetry.RuntimeSeconds = intPtr(120)
+			var tracker lowBatteryTracker
+			now := time.Unix(1_700_000_000, 0)
+			if tracker.Low(device, telemetry, now) {
+				t.Fatal("LB before grace elapsed")
+			}
+			if low := tracker.Low(device, telemetry, now.Add(time.Minute)); low != tc.wantLow {
+				t.Errorf("LB after grace = %v, want %v", low, tc.wantLow)
+			}
+		})
+	}
+}
+
+func TestLowBatteryTrackerRestartsGraceAfterCharging(t *testing.T) {
+	device := config.Device{LowBatteryPercent: 20, LowRuntimeSeconds: 300, LowRuntimeMaxPercent: 50, LowRuntimeGraceSeconds: 60}
+	for _, chargingCharge := range []int{40, 20} {
+		var tracker lowBatteryTracker
+		telemetry := Telemetry{Charge: intPtr(40), RuntimeSeconds: intPtr(120), BatteryPower: intPtr(-100), InputPresent: boolPtr(false)}
+		now := time.Unix(1_700_000_000, 0)
+		if tracker.Low(device, telemetry, now) {
+			t.Fatal("LB before grace elapsed")
+		}
+		telemetry.BatteryPower = intPtr(400)
+		telemetry.Charge = intPtr(chargingCharge)
+		if low := tracker.Low(device, telemetry, now.Add(30*time.Second)); low != (chargingCharge <= device.LowBatteryPercent) {
+			t.Errorf("charging at %d%%: LB=%v, want only the immediate charge threshold to apply", chargingCharge, low)
+		}
+		telemetry.BatteryPower = intPtr(-100)
+		telemetry.Charge = intPtr(40)
+		for _, seconds := range []int{70, 129} {
+			if tracker.Low(device, telemetry, now.Add(time.Duration(seconds)*time.Second)) {
+				t.Errorf("charging at %d%% did not reset grace: LB at second %d", chargingCharge, seconds)
+			}
+		}
+		if !tracker.Low(device, telemetry, now.Add(130*time.Second)) {
+			t.Error("no LB after a full grace period of discharging again")
+		}
+	}
+}

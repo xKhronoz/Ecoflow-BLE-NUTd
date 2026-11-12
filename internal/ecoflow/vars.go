@@ -81,7 +81,7 @@ func extendedVars(msg protoreflect.ProtoMessage) map[string]string {
 	}
 	capacity("battery.capacity.nominal", "bms_design_cap")
 	capacity("battery.capacity", "bms_full_cap")
-	number("battery.charge.low", 0, "cms_min_dsg_soc")
+	number("experimental.battery.charge.minimum", 0, "cms_min_dsg_soc")
 	// The 12 V socket's own rail (runtime message).
 	number("outlet.8.voltage", 1, "plug_in_info_12v_vol")
 	number("outlet.8.current", 2, "plug_in_info_12v_amp")
