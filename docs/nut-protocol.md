@@ -11,8 +11,15 @@
 | AC input present            | `ups.status=OL`   |
 | no AC input                 | `ups.status=OB`   |
 | low battery/runtime         | append `LB`       |
-| input watts                 | `input.power`     |
-| output watts                | `output.power`    |
+| total input watts           | `experimental.input.realpower.total` |
+| total output watts          | `ups.realpower`   |
+| AC input watts              | `input.realpower` |
+| AC input apparent power (VA) | `input.power`, calculated from reported AC volts and amps |
+| AC output apparent power (VA) | `output.power`, calculated from reported AC volts and amps |
+
+`input.realpower` is real power in watts. Apparent power is measured in VA and uses `input.power` or `output.power`, following the [NUT variable definitions](https://networkupstools.org/docs/user-manual.chunked/_variables.html). The daemon estimates VA as the magnitude of the published AC voltage multiplied by AC current, rounded to whole VA. It requires both measurements and does not assume a power factor or a nominal mains voltage.
+
+**Power variable migration:** earlier versions published EcoFlow total watts under `input.power` and `output.power`, which NUT defines in VA. Scripts or dashboards expecting those watt totals should now use `experimental.input.realpower.total` and `ups.realpower` respectively. This applies to the BLE, mock, and JSON-directory providers; the JSON input fields `input_power` and `output_power` still accept watts. Without voltage/current telemetry, VA fields are absent rather than populated with watts.
 
 ### Further variables from the property profiles
 
@@ -38,9 +45,11 @@ RIVER 3 telemetry can include `pow_get_typec2` even at zero watts. This is prese
 
 Known session control messages from `src=0x35` bypass the telemetry decoder: the two-byte authentication-status reply (`0x35/0x89`), the empty time request and five-byte RTC response (`0x01/0x52`), and the one-byte time reply (`0x01/0x53`). The [upstream RIVER 3 BLE handler](https://github.com/rabits/ha-ef-ble/blob/main/custom_components/ef_ble/eflib/devices/river3.py) also consumes nonempty `0x52` responses without sending another time update. Time requests retain the response rate limit. Unknown packet kinds and unexpected payload lengths still produce a `packet kind not decoded` diagnostic once per kind per connection; control messages do not refresh telemetry freshness.
 
-Two variables are derived after partial updates are merged, so the readings behind them need not arrive in the same message: `ups.load` is `ups.realpower` as a percentage of `ups.realpower.nominal`, and `ups.temperature` is the inverter's AC stage when a runtime message has given it, else the BMS MOSFETs from the display message.
+Derived variables are calculated after partial updates are merged, so their source readings need not arrive in the same message: `ups.load` is `ups.realpower` as a percentage of `ups.realpower.nominal`; `ups.temperature` is the inverter's AC stage when a runtime message has given it, else the BMS MOSFETs from the display message; and `input.power` / `output.power` use the latest AC voltage and current readings.
 
 **Conditional:** the same families define a `RuntimePropertyUpload` message with the electrical detail below. It is decoded whenever a device sends it, but no way to make a device push it over Bluetooth is known yet (a `ConfigWrite` of the `cfg_runtime_property_*_upload_period` fields is neither acknowledged nor acted on by a DELTA 3 Max Plus), so these variables should be expected to be absent.
+
+`input.voltage` and `output.voltage` are already supported when the runtime message reports them. Their absence means no measurement has arrived in this session; voltage cannot be recovered from watts alone. Configuring a model name or output power rating does not supply voltage telemetry.
 
 | EcoFlow reading (runtime message)        | NUT variable                                          |
 | ---------------------------------------- | ----------------------------------------------------- |

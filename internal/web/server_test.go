@@ -2,8 +2,10 @@ package web
 
 import (
 	"encoding/json"
+	"html"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -71,6 +73,55 @@ func TestStatusEndpoint(t *testing.T) {
 	}
 	if len(resp.Devices) != 1 || resp.Devices[0].Vars["battery.charge"] != "77" {
 		t.Fatalf("devices = %#v", resp.Devices)
+	}
+}
+
+func TestDeviceModelHeadings(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name, model, want string
+	}{
+		{"model", "River 3", "River 3"},
+		{"no model", "", "river3"},
+		{"blank model", " \t", "river3"},
+		{"trimmed model", " River 3 ", "River 3"},
+		{"HTML in model", "<b>River 3</b>", "<b>River 3</b>"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			store := state.New()
+			store.Upsert("river3", "EcoFlow River 3 BLE", map[string]string{"ups.status": "OL"})
+			server := New(&config.Config{Devices: []config.Device{{Name: "river3", Model: tc.model}}}, store, &fakeController{})
+
+			page := httptest.NewRecorder()
+			server.routes().ServeHTTP(page, httptest.NewRequest(http.MethodGet, "/", nil))
+			if page.Code != http.StatusOK || !strings.Contains(page.Body.String(), "<h2>"+html.EscapeString(tc.want)+"</h2>") {
+				t.Fatalf("page status=%d, missing escaped device heading %q", page.Code, tc.want)
+			}
+			for _, markup := range []string{
+				`class="device-info-button" type="button"`,
+				`aria-describedby="nut-name-0"`,
+				`id="nut-name-0" role="tooltip">NUT Device Name: river3</span>`,
+			} {
+				if !strings.Contains(page.Body.String(), markup) {
+					t.Errorf("missing NUT name tooltip markup %q", markup)
+				}
+			}
+
+			status := httptest.NewRecorder()
+			server.routes().ServeHTTP(status, httptest.NewRequest(http.MethodGet, "/api/status", nil))
+			var response statusResponse
+			if err := json.Unmarshal(status.Body.Bytes(), &response); err != nil {
+				t.Fatal(err)
+			}
+			if len(response.Devices) != 1 {
+				t.Fatalf("devices = %#v", response.Devices)
+			}
+			device := response.Devices[0]
+			if device.Name != "river3" || device.Model != strings.TrimSpace(tc.model) || device.Description != "EcoFlow River 3 BLE" {
+				t.Fatalf("device identity changed or incorrect model: %#v", device)
+			}
+		})
 	}
 }
 

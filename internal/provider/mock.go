@@ -31,8 +31,8 @@ func (m *Mock) Run(ctx context.Context, store *state.Store) error {
 			vars := baseVars(d, status)
 			vars["battery.charge"] = fmt.Sprintf("%d", charge)
 			vars["battery.runtime"] = fmt.Sprintf("%d", runtime)
-			vars["input.power"] = "0"
-			vars["output.power"] = "85"
+			vars["experimental.input.realpower.total"] = "0"
+			vars["ups.realpower"] = "85"
 			store.Upsert(d.Name, d.Description, vars)
 		}
 	}

@@ -523,10 +523,20 @@ func liveVars(device config.Device, desc DeviceDescriptor, telemetry Telemetry, 
 		vars["battery.runtime"] = state.FormatInt(*telemetry.RuntimeSeconds)
 	}
 	if telemetry.InputPower != nil {
-		vars["input.power"] = state.FormatInt(*telemetry.InputPower)
+		vars["experimental.input.realpower.total"] = state.FormatInt(*telemetry.InputPower)
 	}
 	if telemetry.OutputPower != nil {
-		vars["output.power"] = state.FormatInt(*telemetry.OutputPower)
+		vars["ups.realpower"] = state.FormatInt(*telemetry.OutputPower)
+	}
+	// NUT's .power fields are apparent power (VA), not real power (W).
+	// Derive them after merging, since volts and amps can arrive separately.
+	for _, side := range []string{"input", "output"} {
+		volts, voltageErr := strconv.ParseFloat(vars[side+".voltage"], 64)
+		amps, currentErr := strconv.ParseFloat(vars[side+".current"], 64)
+		va := math.Abs(volts * amps)
+		if voltageErr == nil && currentErr == nil && volts >= 0 && !math.IsNaN(va) && !math.IsInf(va, 0) {
+			vars[side+".power"] = strconv.FormatFloat(va, 'f', 0, 64)
+		}
 	}
 	// Derived after the merge, so that two readings need not share a
 	// message: the load from the latest output and the latest rating (the

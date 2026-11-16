@@ -40,6 +40,13 @@ The existing `mock` provider cycles battery charge with fixed output power and c
 - [ ] Consolidate troubleshooting into a symptom-to-action guide for scan timeouts, login failures, stale readings, and container/native setup. Correct credential-encoding guidance to distinguish a plain-text configuration password from the encoded cloud API payload.
 - [ ] Document platform-specific discovery behavior and supported runtime limits, including how device identifiers differ between Linux and macOS. Provide verified discovery steps for each documented platform.
 
+## Planned: native systemd updates
+
+- [ ] Add an opt-in updater script for native Linux binary installations managed by systemd. Detect `amd64`, `arm64`, or `armv7`, select the latest stable release or an explicitly pinned version, and skip an already installed version. Require an explicit option for prereleases; the rolling native `latest` tag can include them.
+- [ ] Download and verify the matching release archive against its `SHA256SUMS` before stopping collection. Provide check-only/dry-run modes and prevent concurrent updates. Preserve the existing configuration, credential permissions, service account, and local systemd overrides.
+- [ ] Stage an atomic binary replacement, retain the previous binary, restart the service, and verify service health, NUT availability, and fresh telemetry within a configurable timeout. Restore and restart the previous version if validation fails; report update and rollback results clearly in journald.
+- [ ] Offer an optional systemd timer with documented scheduling, disabling, and manual rollback steps. Bundle the updater with native releases and verify successful updates, download/checksum failures, restart failures, and rollback on the supported Linux architectures. Document how a collection restart affects NUT monitoring.
+
 ## Planned: notifications
 
 To design notification channel configuration and provider coverage. The providers and URL schemes below are implementation candidates, not currently supported configuration; validate each integration before documenting its final syntax.

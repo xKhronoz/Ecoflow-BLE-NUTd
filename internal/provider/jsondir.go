@@ -51,8 +51,8 @@ func (j *JSONDir) Run(ctx context.Context, store *state.Store) error {
 			vars := baseVars(d, status)
 			vars["battery.charge"] = state.FormatInt(r.BatteryCharge)
 			vars["battery.runtime"] = state.FormatInt(r.BatteryRuntime)
-			vars["input.power"] = state.FormatInt(r.InputPower)
-			vars["output.power"] = state.FormatInt(r.OutputPower)
+			vars["experimental.input.realpower.total"] = state.FormatInt(r.InputPower)
+			vars["ups.realpower"] = state.FormatInt(r.OutputPower)
 			store.Upsert(d.Name, d.Description, vars)
 		}
 	}

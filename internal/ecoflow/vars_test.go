@@ -74,11 +74,63 @@ func TestExtendedVarsFromDelta3Display(t *testing.T) {
 	if vars["battery.charger.status"] != "charging" {
 		t.Errorf("battery.charger.status = %q", vars["battery.charger.status"])
 	}
-	if vars["ups.realpower.nominal"] != "2000" || vars["battery.charge"] != "87" || vars["output.power"] != "127" {
-		t.Errorf("core/extended mix wrong: nominal=%q charge=%q output.power=%q", vars["ups.realpower.nominal"], vars["battery.charge"], vars["output.power"])
+	if vars["ups.realpower.nominal"] != "2000" || vars["battery.charge"] != "87" || vars["ups.realpower"] != "127" {
+		t.Errorf("core/extended mix wrong: nominal=%q charge=%q ups.realpower=%q", vars["ups.realpower.nominal"], vars["battery.charge"], vars["ups.realpower"])
 	}
 	if vars["ups.load"] != "6" || vars["ups.temperature"] != "38" {
 		t.Errorf("derived: load=%q temperature=%q, want 6 and 38", vars["ups.load"], vars["ups.temperature"])
+	}
+}
+
+func TestApparentPowerUsesACMeasurementsAfterMerge(t *testing.T) {
+	device := config.Device{Name: "river3"}
+	telemetry := telemetryFromProto(&pr705pb.DisplayPropertyUpload{
+		PowInSumW: proto.Float32(350), PowGetAcIn: proto.Float32(210), PowOutSumW: proto.Float32(85),
+	}).Merge(telemetryFromProto(&pr705pb.RuntimePropertyUpload{
+		PlugInInfoAcInVol: proto.Float32(230.4), PlugInInfoAcOutVol: proto.Float32(230),
+	}))
+	vars := liveVars(device, DeviceDescriptor{}, telemetry, false)
+	for _, key := range []string{"input.power", "output.power"} {
+		if _, ok := vars[key]; ok {
+			t.Errorf("%s must be absent without measured current", key)
+		}
+	}
+	telemetry = telemetry.Merge(telemetryFromProto(&pr705pb.RuntimePropertyUpload{
+		PlugInInfoAcInAmp: proto.Float32(1.25), PlugInInfoAcOutAmp: proto.Float32(0.5),
+	}))
+	vars = liveVars(device, DeviceDescriptor{}, telemetry, false)
+	for key, want := range map[string]string{
+		"input.power": "288", "output.power": "115", "input.realpower": "210",
+		"experimental.input.realpower.total": "350", "ups.realpower": "85",
+		"input.voltage": "230.4", "output.voltage": "230.0",
+	} {
+		if got := vars[key]; got != want {
+			t.Errorf("%s = %q, want %q", key, got, want)
+		}
+	}
+	// A later display-only update must retain volts, amps, and derived VA.
+	telemetry = telemetry.Merge(telemetryFromProto(&pr705pb.DisplayPropertyUpload{PowInSumW: proto.Float32(400)}))
+	vars = liveVars(device, DeviceDescriptor{}, telemetry, false)
+	if vars["input.power"] != "288" || vars["experimental.input.realpower.total"] != "400" {
+		t.Fatalf("partial update confused apparent and real power: %#v", vars)
+	}
+}
+
+func TestApparentPowerRequiresFiniteMeasurements(t *testing.T) {
+	for _, tc := range []struct{ volts, amps, want string }{
+		{"230", "0", "0"}, {"230", "-1.25", "288"}, {"0", "0", "0"},
+		{"", "1", ""}, {"230", "", ""}, {"NaN", "1", ""},
+		{"230", "+Inf", ""}, {"-230", "1", ""}, {"invalid", "1", ""},
+	} {
+		for _, side := range []string{"input", "output"} {
+			vars := liveVars(config.Device{}, DeviceDescriptor{}, Telemetry{Vars: map[string]string{
+				side + ".voltage": tc.volts, side + ".current": tc.amps,
+			}}, false)
+			got, present := vars[side+".power"]
+			if got != tc.want || present != (tc.want != "") {
+				t.Errorf("%s VA for %q V / %q A = %q (present=%v), want %q", side, tc.volts, tc.amps, got, present, tc.want)
+			}
+		}
 	}
 }
 

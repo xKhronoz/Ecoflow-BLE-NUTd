@@ -472,11 +472,11 @@ func TestRunSessionRetainsPartialTelemetry(t *testing.T) {
 	conn.emit(mustEncode(Packet{Src: 2, CmdSet: 0xfe, CmdID: 0x15, Payload: payload, Version: 0x03}.MarshalBinary()))
 	waitForCondition(t, time.Second, func() bool {
 		u, ok := store.Get(device.Name)
-		return ok && u.Vars["output.power"] == "42"
+		return ok && u.Vars["ups.realpower"] == "42"
 	})
 	u, _ := store.Get(device.Name)
 	// The merged sums (120 W in, 42 W out) also say the pack is charging.
-	if u.Vars["ups.status"] != "OL CHRG" || u.Vars["battery.charge"] != "74" || u.Vars["battery.runtime"] != "1800" || u.Vars["input.power"] != "120" {
+	if u.Vars["ups.status"] != "OL CHRG" || u.Vars["battery.charge"] != "74" || u.Vars["battery.runtime"] != "1800" || u.Vars["experimental.input.realpower.total"] != "120" {
 		t.Fatalf("partial telemetry discarded prior state: %#v", u.Vars)
 	}
 	if u.Vars["battery.charger.status"] != "charging" {
