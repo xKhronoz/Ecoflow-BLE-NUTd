@@ -48,11 +48,12 @@ type deviceResponse struct {
 }
 
 type pageData struct {
-	Title      string
-	Provider   runtime.ProviderStatus
-	Daemon     daemonInfo
-	Devices    []pageDevice
-	ControlURL string
+	Title        string
+	ControlTitle string
+	Provider     runtime.ProviderStatus
+	Daemon       daemonInfo
+	Devices      []pageDevice
+	ControlURL   string
 }
 
 type pageDevice struct {
@@ -132,11 +133,12 @@ func (s *Server) protect(next http.Handler) http.Handler {
 
 func (s *Server) handlePage(w http.ResponseWriter, r *http.Request) {
 	data := pageData{
-		Title:      controlTitle(s.cfg.Provider.Type),
-		Provider:   s.controller.Status(),
-		Daemon:     daemonInfo{NUTListen: s.cfg.Listen, WebListen: s.cfg.Web.Listen},
-		Devices:    s.pageDevices(),
-		ControlURL: controlNote(s.cfg.Provider.Type),
+		Title:        "EcoFlow BLE NUTd",
+		ControlTitle: controlTitle(s.cfg.Provider.Type),
+		Provider:     s.controller.Status(),
+		Daemon:       daemonInfo{NUTListen: s.cfg.Listen, WebListen: s.cfg.Web.Listen},
+		Devices:      s.pageDevices(),
+		ControlURL:   controlNote(s.cfg.Provider.Type),
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	if err := s.page.Execute(w, data); err != nil {
@@ -220,9 +222,9 @@ func writeJSON(w http.ResponseWriter, status int, payload any) {
 
 func controlTitle(providerType string) string {
 	if providerType == "eco-ble" {
-		return "EcoFlow BLE Collector Control"
+		return "Collector control"
 	}
-	return "Provider Control"
+	return "Provider control"
 }
 
 func controlNote(providerType string) string {
@@ -237,7 +239,7 @@ const statusPage = `<!DOCTYPE html>
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Ecoflow-BLE-NUTd Status</title>
+  <title>{{ .Title }}</title>
   <link rel="icon" type="image/svg+xml" href="/favicon.svg">
   <style>
     :root {
@@ -292,6 +294,10 @@ const statusPage = `<!DOCTYPE html>
       min-width: 0;
       font-size: clamp(2rem, 4vw, 3rem);
       line-height: 1.1;
+    }
+    .hero h2 {
+      margin: 18px 0 8px;
+      font-size: 1.25rem;
     }
     .hero p {
       margin: 8px 0;
@@ -457,8 +463,9 @@ const statusPage = `<!DOCTYPE html>
         <img class="brand-logo" src="/assets/logo.svg" width="64" height="64" alt="">
         <h1>{{ .Title }}</h1>
       </div>
+      <h2 id="collector-control-title">{{ .ControlTitle }}</h2>
       <p>{{ .ControlURL }}</p>
-      <div class="controls" id="collector-controls" aria-busy="false">
+      <div class="controls" id="collector-controls" role="group" aria-labelledby="collector-control-title" aria-busy="false">
         <button type="button" data-action="enable">Enable</button>
         <button class="danger" type="button" data-action="disable">Disable</button>
         <a class="link secondary" href="/api/status">JSON Status</a>

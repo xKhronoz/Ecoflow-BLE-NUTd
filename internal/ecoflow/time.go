@@ -46,3 +46,12 @@ func timezoneOffset(now time.Time) (int, int) {
 func isTimeRequest(packet Packet) bool {
 	return packet.Src == 0x35 && packet.CmdSet == 0x01 && packet.CmdID == 0x52 && len(packet.Payload) == 0
 }
+
+func isTimeReply(packet Packet) bool {
+	if packet.Src != 0x35 || packet.CmdSet != 0x01 {
+		return false
+	}
+	// RIVER 3 also sends a nonempty RTC response on the request's command.
+	return (packet.CmdID == 0x52 && len(packet.Payload) == 5) ||
+		(packet.CmdID == 0x53 && len(packet.Payload) == 1)
+}

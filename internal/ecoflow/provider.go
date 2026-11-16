@@ -168,6 +168,13 @@ func (p *Provider) runSession(ctx context.Context, store *state.Store, device co
 					}
 				}
 			}
+			// The request is handled even when the response is rate-limited.
+			return nil
+		}
+		if isAuthStatusReply(packet) || (desc.SupportsTime && isTimeReply(packet)) {
+			// Session control replies carry no telemetry. Only consume the
+			// known shapes so unexpected variants still reach diagnostics.
+			return nil
 		}
 		telemetry, outbound, handled, err := handler.HandlePacket(packet)
 		if err != nil {
@@ -435,6 +442,10 @@ func authPacket(desc DeviceDescriptor, userID string) Packet {
 
 func isAuthReply(packet Packet) bool {
 	return packet.Src == 0x35 && packet.CmdSet == 0x35 && packet.CmdID == 0x86
+}
+
+func isAuthStatusReply(packet Packet) bool {
+	return packet.Src == 0x35 && packet.CmdSet == 0x35 && packet.CmdID == 0x89 && len(packet.Payload) == 2
 }
 
 func authErrorFromPayload(payload []byte) error {

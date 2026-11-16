@@ -55,7 +55,7 @@ The `mock` and `json-dir` providers allow development without BLE hardware. See 
 
 Browse the [documentation index](docs/README.md) or [deployment index](deploy/README.md). Authentication errors, are covered in [BLE troubleshooting](docs/ble-authentication.md#authentication-troubleshooting).
 
-Planned setup automation and interface improvements are tracked in the [TODO checklist](docs/todo.md).
+Planned work is grouped in the [roadmap and milestones](docs/roadmap.md), with implementation tasks in the [TODO checklist](docs/todo.md).
 
 Read the [security policy](SECURITY.md) for vulnerability reporting, trust boundaries, and known protocol limitations.
 

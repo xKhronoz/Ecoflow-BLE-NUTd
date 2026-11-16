@@ -32,6 +32,7 @@ func TestExtendedVarsFromDelta3Display(t *testing.T) {
 		BmsMaxMosTemp:            proto.Int32(38),
 		BmsDesignCap:             proto.Uint32(40000),
 		CmsMinDsgSoc:             proto.Uint32(20),
+		CmsMaxChgSoc:             proto.Uint32(90),
 	}
 	telemetry := telemetryFromProto(msg)
 	if telemetry.BatteryPower == nil || *telemetry.BatteryPower != 80 {
@@ -45,6 +46,7 @@ func TestExtendedVarsFromDelta3Display(t *testing.T) {
 		"battery.temperature":                 "31",
 		"battery.capacity.nominal":            "40.0",
 		"experimental.battery.charge.minimum": "20",
+		"experimental.battery.charge.maximum": "90",
 		"outlet.1.desc":                       "AC 1",
 		"outlet.1.realpower":                  "100",
 		"outlet.1.status":                     "on",
@@ -269,6 +271,29 @@ func TestLowChargeVariableUsesConfiguredThreshold(t *testing.T) {
 	}
 }
 
+func TestMaximumChargeLimitAcrossPartialUpdates(t *testing.T) {
+	var telemetry Telemetry
+	for _, tc := range []struct {
+		limit   *uint32
+		want    string
+		present bool
+	}{
+		{nil, "", false},
+		{proto.Uint32(90), "90", true},
+		{nil, "90", true},
+		{proto.Uint32(0), "0", true},
+		{nil, "0", true},
+		{proto.Uint32(100), "100", true},
+	} {
+		telemetry = telemetry.Merge(telemetryFromProto(&pr705pb.DisplayPropertyUpload{CmsMaxChgSoc: tc.limit}))
+		vars := liveVars(config.Device{Name: "ups"}, DeviceDescriptor{}, telemetry, false)
+		got, present := vars["experimental.battery.charge.maximum"]
+		if got != tc.want || present != tc.present {
+			t.Errorf("maximum = %q (present=%v), want %q (present=%v)", got, present, tc.want, tc.present)
+		}
+	}
+}
+
 // The inverter's temperature comes in the rarer runtime message; the
 // display message that follows every second must not replace it with the
 // MOSFET fallback.
@@ -415,8 +440,8 @@ func TestTwelveVoltOutletsFollowSharedSwitchAcrossUpdates(t *testing.T) {
 	}
 }
 
-// A RIVER 3: one AC group, two USB-C, two USB-A, one 12 V socket behind the
-// switch, no per-group lists. Nothing beyond that may appear.
+// Preserve the outlet fields a RIVER 3 reports, including a second USB-C
+// field with zero values. Fields omitted from the message stay absent.
 func TestExtendedVarsFromRiver3Display(t *testing.T) {
 	telemetry := telemetryFromProto(&pr705pb.DisplayPropertyUpload{
 		CmsBattSoc:               proto.Float32(64),
@@ -429,6 +454,7 @@ func TestExtendedVarsFromRiver3Display(t *testing.T) {
 		FlowInfoAcOut:            proto.Uint32(2),
 		PowGetTypec1:             proto.Float32(-18),
 		FlowInfoTypec1:           proto.Uint32(2),
+		PowGetTypec2:             proto.Float32(0),
 		FlowInfoTypec2:           proto.Uint32(0),
 		PowGetQcusb1:             proto.Float32(-7.3),
 		FlowInfoQcusb1:           proto.Uint32(2),
@@ -451,6 +477,7 @@ func TestExtendedVarsFromRiver3Display(t *testing.T) {
 		"outlet.3.desc":                       "USB-C 1",
 		"outlet.3.realpower":                  "18",
 		"outlet.4.desc":                       "USB-C 2",
+		"outlet.4.realpower":                  "0",
 		"outlet.4.status":                     "off",
 		"outlet.6.desc":                       "USB-A 1",
 		"outlet.6.realpower":                  "7",
@@ -474,7 +501,7 @@ func TestExtendedVarsFromRiver3Display(t *testing.T) {
 	}
 }
 
-// A DELTA Pro 3: the same port set as the RIVER 3 at a different scale, and
+// A DELTA Pro 3: two USB-C ports, higher power, and
 // the runtime message's readings on top when it comes.
 func TestExtendedVarsFromDeltaPro3(t *testing.T) {
 	merged := telemetryFromProto(&mr521pb.DisplayPropertyUpload{

@@ -62,7 +62,7 @@ For the five threshold and timeout settings, an omitted, zero, or negative value
 
 With the example values, discharging at 40% charge with an estimated 240 seconds remaining sets `LB` after those conditions persist for 60 seconds. At 80% charge, that same runtime estimate does not trigger `LB`. At 20% charge or below, the charge threshold sets `LB` immediately, even while charging.
 
-Discharge is determined from the battery's own power reading when available, else the balance of total input and output power, including solar and car input. AC presence is the fallback when power readings are missing. The discharge floor set in the EcoFlow app is a separate device limit, exposed as `experimental.battery.charge.minimum` when reported.
+Discharge is determined from the battery's own power reading when available, else the balance of total input and output power, including solar and car input. AC presence is the fallback when power readings are missing. The discharge floor and charging ceiling set in the EcoFlow app are separate device limits, exposed as read-only `experimental.battery.charge.minimum` and `experimental.battery.charge.maximum` when reported. They do not change the daemon's low-battery thresholds.
 
 The `mock` and `json-dir` providers use `low_battery_percent` and `low_runtime_seconds`, applying either threshold immediately. They do not use the BLE runtime guards, rating fallback, or stale timeout described above.
 

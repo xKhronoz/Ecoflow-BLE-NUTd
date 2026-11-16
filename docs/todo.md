@@ -1,8 +1,17 @@
 # TODO and UX improvements
 
-[Project overview](../README.md) · [Documentation index](README.md)
+[Project overview](../README.md) · [Documentation index](README.md) · [Roadmap and milestones](roadmap.md)
 
 This checklist tracks setup automation, user experience improvements, and deferred verification. Unchecked items are planned work, not available features or verified behavior. The setup and UX sections are ordered by suggested priority; no delivery dates are committed.
+
+## Planned: model simulation
+
+The existing `mock` provider cycles battery charge with fixed output power and can emit `OB` and `OB LB`. Extend it with model presets and repeatable scenarios so NUT clients can be tested without a connected power station.
+
+- [ ] Add presets for common supported families, starting with RIVER 3, DELTA 2, and DELTA 3. Include model identity, capacity/rating, supported outlets, and representative telemetry; omit ports and fields a model lacks.
+- [ ] Add selectable, deterministic scenarios for mains operation (`OL`), mains loss (`OB`), discharge to `OB LB` by charge or runtime, mains recovery, and brief/sustained stale telemetry (`WAIT`). Allow short test durations, repeatable starting values, and independent state for multiple configured devices.
+- [ ] Exercise the BLE telemetry merge, power-state mapping, and low-battery guards with simulated readings so model scenarios test the production decisions, including runtime grace and implausibly low runtime at high charge. Keep the simpler mock's current behavior available and document any differences.
+- [ ] Document an isolated NUT/`upsmon` setup with expected status transitions and captured logs. Start with a harmless shutdown-command substitute; verify notification and shutdown triggers before a controlled test on a noncritical host. Include the current limits of `FSD` and other session commands, and keep hardware accuracy checks in the [shutdown verification checklist](#deferred-power-status-and-nut-shutdown-verification).
 
 ## First priority: guided setup
 

@@ -8,9 +8,9 @@ import (
 )
 
 // outletPorts gives every port a fixed outlet number, so a reading keeps its
-// meaning across models (a port a model lacks simply never appears) and
-// across partial property updates. power is the per-port watts field, which
-// the devices report negative for output; flow is the port's flow bitmask.
+// meaning across models and partial property updates. An outlet is exposed
+// when its fields are reported, including explicit zero values. power is
+// the per-port watts field (negative for output); flow is its flow bitmask.
 // listOnly marks a port whose only evidence is its slot in a per-group watts
 // list: its flow field is shared with another port, so without the slot the
 // port does not exist on this model.
@@ -82,6 +82,7 @@ func extendedVars(msg protoreflect.ProtoMessage) map[string]string {
 	capacity("battery.capacity.nominal", "bms_design_cap")
 	capacity("battery.capacity", "bms_full_cap")
 	number("experimental.battery.charge.minimum", 0, "cms_min_dsg_soc")
+	number("experimental.battery.charge.maximum", 0, "cms_max_chg_soc")
 	// The 12 V socket's own rail (runtime message).
 	number("outlet.8.voltage", 1, "plug_in_info_12v_vol")
 	number("outlet.8.current", 2, "plug_in_info_12v_amp")
