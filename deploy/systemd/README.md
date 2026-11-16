@@ -39,9 +39,21 @@ sudo ./install-systemd.sh --config ./ecoflow-ble-nutd.conf
 
 The rolling `latest` asset names remain stable across releases. For a fixed version, download a versioned asset from [GitHub Releases](https://github.com/xkhronoz/ecoflow-ble-nutd/releases).
 
-The bundled installer detects the binary, service unit, and example configuration in the extracted release directory. Available flags include `--binary PATH`, `--config PATH`, `--skip-config`, and `--no-start`.
+The bundled installer detects the binary, service unit, and example configuration in the extracted release directory. Available flags include `--binary PATH`, `--config PATH`, `--replace-config`, `--skip-config`, and `--no-start`.
 
 Both source and release installations keep an existing `/etc/ecoflow-ble-nutd.conf`. Use `--skip-config` to install only the binary and service unit. Use `--no-start` to install and enable the service without starting or restarting it.
+
+### Apply an edited configuration
+
+`--config PATH` supplies the configuration for a first installation. To replace an already installed configuration, explicitly add `--replace-config`:
+
+```sh
+sudo ./deploy/systemd/install-systemd.sh --config ./ecoflow-ble-nutd.conf --replace-config
+```
+
+From a release directory, use `sudo ./install-systemd.sh --config ./ecoflow-ble-nutd.conf --replace-config` instead. The installer saves the previous file to a unique `/etc/ecoflow-ble-nutd.conf.bak.XXXXXX` path and prints its actual name. Both the backup and installed configuration have mode `0600`. Replacement is staged in the same directory and renamed into place; a failed copy leaves the existing configuration intact.
+
+`--replace-config` requires an explicit `--config PATH` and cannot be combined with `--skip-config`. It never selects the bundled example implicitly. The service restarts by default to pick up the new configuration through `LoadCredential`. With `--no-start`, run `sudo systemctl restart ecoflow-ble-nutd` when ready. If the source is already `/etc/ecoflow-ble-nutd.conf`, no copy or replacement backup is needed; the normal restart still applies.
 
 ## Run without systemd
 

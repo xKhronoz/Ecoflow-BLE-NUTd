@@ -57,6 +57,8 @@ go vet ./...
 go test -race ./...
 ```
 
+The Go suite includes isolated tests of the systemd installer with temporary install paths and stubbed service commands; these tests do not require root or change host services.
+
 The CI workflow also checks Go formatting and cross-builds Linux AMD64, ARM64, and ARMv7 binaries. Its container job validates Compose, builds the production image, and checks NUT telemetry, web status, health, and clean shutdown.
 
 For the container smoke test, run from the repository root:

@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"net/http"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/xkhronoz/ecoflow-ble-nutd/internal/config"
@@ -41,6 +42,7 @@ type daemonInfo struct {
 
 type deviceResponse struct {
 	Name        string            `json:"name"`
+	Model       string            `json:"model"`
 	Description string            `json:"description"`
 	UpdatedAt   time.Time         `json:"updated_at"`
 	AgeSeconds  int64             `json:"age_seconds"`
@@ -48,15 +50,17 @@ type deviceResponse struct {
 }
 
 type pageData struct {
-	Title      string
-	Provider   runtime.ProviderStatus
-	Daemon     daemonInfo
-	Devices    []pageDevice
-	ControlURL string
+	Title        string
+	ControlTitle string
+	Provider     runtime.ProviderStatus
+	Daemon       daemonInfo
+	Devices      []pageDevice
+	ControlURL   string
 }
 
 type pageDevice struct {
 	Name        string
+	Model       string
 	Description string
 	UpdatedAt   time.Time
 	AgeSeconds  int64
@@ -132,11 +136,12 @@ func (s *Server) protect(next http.Handler) http.Handler {
 
 func (s *Server) handlePage(w http.ResponseWriter, r *http.Request) {
 	data := pageData{
-		Title:      controlTitle(s.cfg.Provider.Type),
-		Provider:   s.controller.Status(),
-		Daemon:     daemonInfo{NUTListen: s.cfg.Listen, WebListen: s.cfg.Web.Listen},
-		Devices:    s.pageDevices(),
-		ControlURL: controlNote(s.cfg.Provider.Type),
+		Title:        "EcoFlow BLE NUTd",
+		ControlTitle: controlTitle(s.cfg.Provider.Type),
+		Provider:     s.controller.Status(),
+		Daemon:       daemonInfo{NUTListen: s.cfg.Listen, WebListen: s.cfg.Web.Listen},
+		Devices:      s.pageDevices(),
+		ControlURL:   controlNote(s.cfg.Provider.Type),
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	if err := s.page.Execute(w, data); err != nil {
@@ -176,6 +181,7 @@ func (s *Server) devices() []deviceResponse {
 	for _, ups := range snapshot {
 		out = append(out, deviceResponse{
 			Name:        ups.Name,
+			Model:       s.deviceModel(ups.Name),
 			Description: ups.Description,
 			UpdatedAt:   ups.UpdatedAt,
 			AgeSeconds:  int64(now.Sub(ups.UpdatedAt).Round(time.Second) / time.Second),
@@ -201,6 +207,7 @@ func (s *Server) pageDevices() []pageDevice {
 		}
 		out = append(out, pageDevice{
 			Name:        ups.Name,
+			Model:       s.deviceModel(ups.Name),
 			Description: ups.Description,
 			UpdatedAt:   ups.UpdatedAt,
 			AgeSeconds:  int64(now.Sub(ups.UpdatedAt).Round(time.Second) / time.Second),
@@ -208,6 +215,15 @@ func (s *Server) pageDevices() []pageDevice {
 		})
 	}
 	return out
+}
+
+func (s *Server) deviceModel(name string) string {
+	for _, device := range s.cfg.Devices {
+		if device.Name == name {
+			return strings.TrimSpace(device.Model)
+		}
+	}
+	return ""
 }
 
 func writeJSON(w http.ResponseWriter, status int, payload any) {
@@ -220,7 +236,7 @@ func writeJSON(w http.ResponseWriter, status int, payload any) {
 
 func controlTitle(providerType string) string {
 	if providerType == "eco-ble" {
-		return "EcoFlow BLE Collector Control"
+		return "Collector Control"
 	}
 	return "Provider Control"
 }
@@ -237,7 +253,7 @@ const statusPage = `<!DOCTYPE html>
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Ecoflow-BLE-NUTd Status</title>
+  <title>{{ .Title }}</title>
   <link rel="icon" type="image/svg+xml" href="/favicon.svg">
   <style>
     :root {
@@ -292,6 +308,10 @@ const statusPage = `<!DOCTYPE html>
       min-width: 0;
       font-size: clamp(2rem, 4vw, 3rem);
       line-height: 1.1;
+    }
+    .hero h2 {
+      margin: 18px 0 8px;
+      font-size: 1.25rem;
     }
     .hero p {
       margin: 8px 0;
@@ -397,7 +417,57 @@ const statusPage = `<!DOCTYPE html>
       margin-top: 16px;
     }
     .device h2 {
-      margin: 0 0 4px;
+      margin: 0;
+      min-width: 0;
+      overflow-wrap: anywhere;
+    }
+    .device-heading {
+      position: relative;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin-bottom: 4px;
+    }
+    .device-info {
+      display: inline-flex;
+      flex: none;
+    }
+    .device-info-button {
+      display: inline-grid;
+      place-items: center;
+      width: 32px;
+      height: 32px;
+      padding: 0;
+      background: transparent;
+      color: var(--muted);
+      cursor: help;
+    }
+    .device-info-button:hover, .device-info-button:focus-visible {
+      background: var(--bg);
+      color: var(--accent-strong);
+    }
+    .device-tooltip {
+      position: absolute;
+      top: 100%;
+      left: 0;
+      z-index: 1;
+      visibility: hidden;
+      box-sizing: border-box;
+      width: max-content;
+      max-width: 100%;
+      padding: 8px 12px;
+      border-radius: 8px;
+      background: var(--ink);
+      color: var(--panel);
+      font-size: 0.9rem;
+      overflow-wrap: anywhere;
+    }
+    .device-info:hover .device-tooltip,
+    .device-info:focus-within .device-tooltip {
+      visibility: visible;
+    }
+    .device-info[data-dismissed="true"] .device-tooltip {
+      visibility: hidden;
     }
     .meta {
       color: var(--muted);
@@ -457,8 +527,9 @@ const statusPage = `<!DOCTYPE html>
         <img class="brand-logo" src="/assets/logo.svg" width="64" height="64" alt="">
         <h1>{{ .Title }}</h1>
       </div>
+      <h2 id="collector-control-title">{{ .ControlTitle }}</h2>
       <p>{{ .ControlURL }}</p>
-      <div class="controls" id="collector-controls" aria-busy="false">
+      <div class="controls" id="collector-controls" role="group" aria-labelledby="collector-control-title" aria-busy="false">
         <button type="button" data-action="enable">Enable</button>
         <button class="danger" type="button" data-action="disable">Disable</button>
         <a class="link secondary" href="/api/status">JSON Status</a>
@@ -488,9 +559,17 @@ const statusPage = `<!DOCTYPE html>
       </article>
     </section>
     <div id="devices">
-    {{ range .Devices }}
+    {{ range $index, $device := .Devices }}
     <section class="card device">
-      <h2>{{ .Name }}</h2>
+      <div class="device-heading">
+        <h2>{{ if .Model }}{{ .Model }}{{ else }}{{ .Name }}{{ end }}</h2>
+        <span class="device-info" data-device-name="{{ .Name }}">
+          <button class="device-info-button" type="button" aria-label="NUT Device Name for {{ if .Model }}{{ .Model }}{{ else }}{{ .Name }}{{ end }}" aria-describedby="nut-name-{{ $index }}">
+            <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true" focusable="false"><circle cx="10" cy="10" r="8"/><path d="M10 9v5" stroke-linecap="round"/><circle cx="10" cy="6" r="0.75" fill="currentColor" stroke="none"/></svg>
+          </button>
+          <span class="device-tooltip" id="nut-name-{{ $index }}" role="tooltip">NUT Device Name: {{ .Name }}</span>
+        </span>
+      </div>
       <div class="meta">{{ .Description }} · updated {{ .AgeSeconds }}s ago at {{ .UpdatedAt.Format "2006-01-02 15:04:05 MST" }}</div>
       <table>
         <tbody>
@@ -511,10 +590,38 @@ const statusPage = `<!DOCTYPE html>
       const controls = document.getElementById('collector-controls');
       const buttons = Array.from(controls.querySelectorAll('button[data-action]'));
       const message = document.getElementById('control-message');
+      const devicesContainer = document.getElementById('devices');
       let busy = false;
       let refreshing = false;
       let actionVersion = 0;
       let refreshError = false;
+
+      devicesContainer.addEventListener('focusin', event => {
+        const info = event.target.closest('.device-info');
+        if (info) delete info.dataset.dismissed;
+      });
+      devicesContainer.addEventListener('click', event => {
+        const button = event.target.closest('.device-info-button');
+        if (button) {
+          delete button.closest('.device-info').dataset.dismissed;
+          button.focus({ preventScroll: true });
+        }
+      });
+      devicesContainer.addEventListener('pointerover', event => {
+        const info = event.target.closest('.device-info');
+        if (info && !info.contains(event.relatedTarget)) delete info.dataset.dismissed;
+      });
+      document.addEventListener('keydown', event => {
+        if (event.key === 'Escape') {
+          for (const info of devicesContainer.querySelectorAll('.device-info:hover, .device-info:focus-within')) {
+            info.dataset.dismissed = 'true';
+          }
+        }
+      });
+      document.addEventListener('pointerdown', event => {
+        const info = document.activeElement.closest('.device-info');
+        if (info && !info.contains(event.target)) document.activeElement.blur();
+      });
 
       function showMessage(text, kind) {
         message.textContent = text;
@@ -555,10 +662,28 @@ const statusPage = `<!DOCTYPE html>
         document.getElementById('nut-listen').textContent = status.daemon.nut_listen;
         document.getElementById('web-listen').textContent = status.daemon.web_listen;
 
+        const focusedName = document.activeElement.closest('.device-info')?.dataset.deviceName;
+        const dismissedNames = new Set(Array.from(devicesContainer.querySelectorAll('.device-info[data-dismissed="true"]'),
+          info => info.dataset.deviceName));
         const devices = document.createDocumentFragment();
-        for (const device of status.devices || []) {
+        for (const [index, device] of (status.devices || []).entries()) {
           const section = textElement('section', '', 'card device');
-          section.append(textElement('h2', device.name));
+          const heading = textElement('div', '', 'device-heading');
+          heading.append(textElement('h2', device.model || device.name));
+          const info = textElement('span', '', 'device-info');
+          info.dataset.deviceName = device.name;
+          if (dismissedNames.has(device.name)) info.dataset.dismissed = 'true';
+          const button = textElement('button', '', 'device-info-button');
+          button.type = 'button';
+          button.setAttribute('aria-label', 'NUT Device Name for ' + (device.model || device.name));
+          button.setAttribute('aria-describedby', 'nut-name-' + index);
+          button.innerHTML = '<svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true" focusable="false"><circle cx="10" cy="10" r="8"/><path d="M10 9v5" stroke-linecap="round"/><circle cx="10" cy="6" r="0.75" fill="currentColor" stroke="none"/></svg>';
+          const tooltip = textElement('span', 'NUT Device Name: ' + device.name, 'device-tooltip');
+          tooltip.id = 'nut-name-' + index;
+          tooltip.setAttribute('role', 'tooltip');
+          info.append(button, tooltip);
+          heading.append(info);
+          section.append(heading);
           section.append(textElement('div', device.description + ' · updated ' +
             Math.max(0, device.age_seconds) + 's ago at ' + formatTime(device.updated_at), 'meta'));
           const table = document.createElement('table');
@@ -572,7 +697,15 @@ const statusPage = `<!DOCTYPE html>
           section.append(table);
           devices.append(section);
         }
-        document.getElementById('devices').replaceChildren(devices);
+        devicesContainer.replaceChildren(devices);
+        if (focusedName !== undefined) {
+          const info = Array.from(devicesContainer.querySelectorAll('.device-info'))
+            .find(element => element.dataset.deviceName === focusedName);
+          if (info) {
+            info.querySelector('button').focus({ preventScroll: true });
+            if (dismissedNames.has(focusedName)) info.dataset.dismissed = 'true';
+          }
+        }
       }
 
       async function requestStatus(url, method) {

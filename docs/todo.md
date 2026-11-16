@@ -1,8 +1,17 @@
 # TODO and UX improvements
 
-[Project overview](../README.md) · [Documentation index](README.md)
+[Project overview](../README.md) · [Documentation index](README.md) · [Roadmap and milestones](roadmap.md)
 
 This checklist tracks setup automation, user experience improvements, and deferred verification. Unchecked items are planned work, not available features or verified behavior. The setup and UX sections are ordered by suggested priority; no delivery dates are committed.
+
+## Planned: model simulation
+
+The existing `mock` provider cycles battery charge with fixed output power and can emit `OB` and `OB LB`. Extend it with model presets and repeatable scenarios so NUT clients can be tested without a connected power station.
+
+- [ ] Add presets for common supported families, starting with RIVER 3, DELTA 2, and DELTA 3. Include model identity, capacity/rating, supported outlets, and representative telemetry; omit ports and fields a model lacks.
+- [ ] Add selectable, deterministic scenarios for mains operation (`OL`), mains loss (`OB`), discharge to `OB LB` by charge or runtime, mains recovery, and brief/sustained stale telemetry (`WAIT`). Allow short test durations, repeatable starting values, and independent state for multiple configured devices.
+- [ ] Exercise the BLE telemetry merge, power-state mapping, and low-battery guards with simulated readings so model scenarios test the production decisions, including runtime grace and implausibly low runtime at high charge. Keep the simpler mock's current behavior available and document any differences.
+- [ ] Document an isolated NUT/`upsmon` setup with expected status transitions and captured logs. Start with a harmless shutdown-command substitute; verify notification and shutdown triggers before a controlled test on a noncritical host. Include the current limits of `FSD` and other session commands, and keep hardware accuracy checks in the [shutdown verification checklist](#deferred-power-status-and-nut-shutdown-verification).
 
 ## First priority: guided setup
 
@@ -30,6 +39,13 @@ This checklist tracks setup automation, user experience improvements, and deferr
 - [ ] Verify the status page on small screens and with keyboard/screen-reader navigation. Cover long device names and errors, visible focus, readable contrast, accessible table labels, and status announcements without announcing every poll.
 - [ ] Consolidate troubleshooting into a symptom-to-action guide for scan timeouts, login failures, stale readings, and container/native setup. Correct credential-encoding guidance to distinguish a plain-text configuration password from the encoded cloud API payload.
 - [ ] Document platform-specific discovery behavior and supported runtime limits, including how device identifiers differ between Linux and macOS. Provide verified discovery steps for each documented platform.
+
+## Planned: native systemd updates
+
+- [ ] Add an opt-in updater script for native Linux binary installations managed by systemd. Detect `amd64`, `arm64`, or `armv7`, select the latest stable release or an explicitly pinned version, and skip an already installed version. Require an explicit option for prereleases; the rolling native `latest` tag can include them.
+- [ ] Download and verify the matching release archive against its `SHA256SUMS` before stopping collection. Provide check-only/dry-run modes and prevent concurrent updates. Preserve the existing configuration, credential permissions, service account, and local systemd overrides.
+- [ ] Stage an atomic binary replacement, retain the previous binary, restart the service, and verify service health, NUT availability, and fresh telemetry within a configurable timeout. Restore and restart the previous version if validation fails; report update and rollback results clearly in journald.
+- [ ] Offer an optional systemd timer with documented scheduling, disabling, and manual rollback steps. Bundle the updater with native releases and verify successful updates, download/checksum failures, restart failures, and rollback on the supported Linux architectures. Document how a collection restart affects NUT monitoring.
 
 ## Planned: notifications
 

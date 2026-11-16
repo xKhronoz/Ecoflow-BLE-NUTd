@@ -27,14 +27,25 @@ type WebConfig struct {
 }
 
 type Device struct {
-	Name                string `json:"name" yaml:"name"`
-	Description         string `json:"description" yaml:"description"`
-	Model               string `json:"model" yaml:"model"`
-	Serial              string `json:"serial" yaml:"serial"`
-	MAC                 string `json:"mac" yaml:"mac"`
-	LowBatteryPercent   int    `json:"low_battery_percent" yaml:"low_battery_percent"`
-	LowRuntimeSeconds   int    `json:"low_runtime_seconds" yaml:"low_runtime_seconds"`
-	StaleTimeoutSeconds int    `json:"stale_timeout_seconds" yaml:"stale_timeout_seconds"`
+	Name              string `json:"name" yaml:"name"`
+	Description       string `json:"description" yaml:"description"`
+	Model             string `json:"model" yaml:"model"`
+	Serial            string `json:"serial" yaml:"serial"`
+	MAC               string `json:"mac" yaml:"mac"`
+	LowBatteryPercent int    `json:"low_battery_percent" yaml:"low_battery_percent"`
+	LowRuntimeSeconds int    `json:"low_runtime_seconds" yaml:"low_runtime_seconds"`
+	// The device's remaining-time estimate is noisy: it holds a stale
+	// value for the first seconds after a switch to battery (2 min left at
+	// 93 %) and jumps around under a changing load. A low runtime counts as
+	// low battery only while discharging, only at or below
+	// LowRuntimeMaxPercent, and only once it has stayed low for
+	// LowRuntimeGraceSeconds. The charge threshold above is immediate.
+	LowRuntimeMaxPercent   int `json:"low_runtime_max_percent" yaml:"low_runtime_max_percent"`
+	LowRuntimeGraceSeconds int `json:"low_runtime_grace_seconds" yaml:"low_runtime_grace_seconds"`
+	StaleTimeoutSeconds    int `json:"stale_timeout_seconds" yaml:"stale_timeout_seconds"`
+	// RatedPowerWatts is the AC output rating from the device's label, for
+	// ups.realpower.nominal and ups.load when the device does not report one.
+	RatedPowerWatts int `json:"rated_power_watts" yaml:"rated_power_watts"`
 }
 
 type ProviderCfg struct {
@@ -113,6 +124,12 @@ func Load(path string) (*Config, error) {
 		}
 		if c.Devices[i].LowRuntimeSeconds <= 0 {
 			c.Devices[i].LowRuntimeSeconds = 300
+		}
+		if c.Devices[i].LowRuntimeMaxPercent <= 0 {
+			c.Devices[i].LowRuntimeMaxPercent = 50
+		}
+		if c.Devices[i].LowRuntimeGraceSeconds <= 0 {
+			c.Devices[i].LowRuntimeGraceSeconds = 60
 		}
 		if c.Devices[i].StaleTimeoutSeconds <= 0 {
 			c.Devices[i].StaleTimeoutSeconds = 60

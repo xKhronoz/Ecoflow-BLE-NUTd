@@ -11,8 +11,53 @@
 | AC input present            | `ups.status=OL`   |
 | no AC input                 | `ups.status=OB`   |
 | low battery/runtime         | append `LB`       |
-| input watts                 | `input.power`     |
-| output watts                | `output.power`    |
+| total input watts           | `experimental.input.realpower.total` |
+| total output watts          | `ups.realpower`   |
+| AC input watts              | `input.realpower` |
+| AC input apparent power (VA) | `input.power`, calculated from reported AC volts and amps |
+| AC output apparent power (VA) | `output.power`, calculated from reported AC volts and amps |
+
+`input.realpower` is real power in watts. Apparent power is measured in VA and uses `input.power` or `output.power`, following the [NUT variable definitions](https://networkupstools.org/docs/user-manual.chunked/_variables.html). The daemon estimates VA as the magnitude of the published AC voltage multiplied by AC current, rounded to whole VA. It requires both measurements and does not assume a power factor or a nominal mains voltage.
+
+**Power variable migration:** earlier versions published EcoFlow total watts under `input.power` and `output.power`, which NUT defines in VA. Scripts or dashboards expecting those watt totals should now use `experimental.input.realpower.total` and `ups.realpower` respectively. This applies to the BLE, mock, and JSON-directory providers; the JSON input fields `input_power` and `output_power` still accept watts. Without voltage/current telemetry, VA fields are absent rather than populated with watts.
+
+### Further variables from the property profiles
+
+The RIVER 3, DELTA 3 and DELTA Pro 3 families push a `DisplayPropertyUpload` message about once a second; the profiles map what it carries onto standard NUT names. A model yields the fields its message has, nothing is invented for a missing one.
+
+| EcoFlow reading (display message)        | NUT variable                                          |
+| ---------------------------------------- | ----------------------------------------------------- |
+| AC input frequency, watts                | `input.frequency`, `input.realpower`                  |
+| total output watts                       | `ups.realpower`                                       |
+| rated AC output (`rated_power_watts` when the device reports none) | `ups.realpower.nominal`     |
+| hottest cell                             | `battery.temperature`                                 |
+| design capacity (Ah)                     | `battery.capacity.nominal`                            |
+| discharge floor from the app (percent)   | `experimental.battery.charge.minimum`                 |
+| charging ceiling from the app (percent) | `experimental.battery.charge.maximum`                 |
+| pack charging / discharging (`pow_get_bms`, else input minus output) | append `CHRG` / `DISCHRG`; `battery.charger.status` |
+| one outlet per reported port             | `outlet.N.desc`, `outlet.N.realpower`, `outlet.N.status` |
+
+For `eco-ble`, `battery.charge.low` reports the configured `low_battery_percent` threshold that sets `LB`. The device's discharge floor and charging ceiling from the app are separate limits, exposed as read-only `experimental.battery.charge.minimum` and `experimental.battery.charge.maximum` when reported. These reflect `cms_min_dsg_soc` and `cms_max_chg_soc` respectively, retain explicit zero values, and persist across partial updates that omit them. Charging status uses the pack's watts when available, else the total input minus output, including solar and car input. `OB` means no AC input and can coexist with `CHRG` while charging from DC.
+
+Outlet numbers are fixed per port so a reading keeps its meaning across models and partial updates: 1 AC, 2 AC 2 (second AC group), 3-5 USB-C, 6-7 USB-A, 8 12 V car socket, 9 12 V Anderson. Outlets reflect explicitly reported fields, including zero watts or an off state; an omitted field does not create an outlet. The Anderson port appears only when the device reports a second 12 V group, since it shares the 12 V switch with the car socket. Once detected during a BLE session, it follows shared switch updates even when a later message omits the group list.
+
+RIVER 3 telemetry can include `pow_get_typec2` even at zero watts. This is preserved as outlet 4 (`USB-C 2`) without filtering by model. A reported port field does not by itself confirm a separate physical connector.
+
+Known session control messages from `src=0x35` bypass the telemetry decoder: the two-byte authentication-status reply (`0x35/0x89`), the empty time request and five-byte RTC response (`0x01/0x52`), and the one-byte time reply (`0x01/0x53`). The [upstream RIVER 3 BLE handler](https://github.com/rabits/ha-ef-ble/blob/main/custom_components/ef_ble/eflib/devices/river3.py) also consumes nonempty `0x52` responses without sending another time update. Time requests retain the response rate limit. Unknown packet kinds and unexpected payload lengths still produce a `packet kind not decoded` diagnostic once per kind per connection; control messages do not refresh telemetry freshness.
+
+Derived variables are calculated after partial updates are merged, so their source readings need not arrive in the same message: `ups.load` is `ups.realpower` as a percentage of `ups.realpower.nominal`; `ups.temperature` is the inverter's AC stage when a runtime message has given it, else the BMS MOSFETs from the display message; and `input.power` / `output.power` use the latest AC voltage and current readings.
+
+**Conditional:** the same families define a `RuntimePropertyUpload` message with the electrical detail below. It is decoded whenever a device sends it, but no way to make a device push it over Bluetooth is known yet (a `ConfigWrite` of the `cfg_runtime_property_*_upload_period` fields is neither acknowledged nor acted on by a DELTA 3 Max Plus), so these variables should be expected to be absent.
+
+`input.voltage` and `output.voltage` are already supported when the runtime message reports them. Their absence means no measurement has arrived in this session; voltage cannot be recovered from watts alone. Configuring a model name or output power rating does not supply voltage telemetry.
+
+| EcoFlow reading (runtime message)        | NUT variable                                          |
+| ---------------------------------------- | ----------------------------------------------------- |
+| AC input volts, amps                     | `input.voltage`, `input.current`                      |
+| AC output volts, amps, frequency         | `output.voltage`, `output.current`, `output.frequency` |
+| pack volts, amps, full capacity (Ah)     | `battery.voltage`, `battery.current`, `battery.capacity` |
+| inverter AC stage temperature            | `ups.temperature` (preferred over the MOSFET reading) |
+| 12 V rail volts, amps                    | `outlet.8.voltage`, `outlet.8.current`                |
 
 ## Command coverage
 

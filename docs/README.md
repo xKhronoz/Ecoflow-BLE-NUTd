@@ -13,5 +13,6 @@
 | [NUT protocol](nut-protocol.md) | Variable mapping, supported commands, and compatibility limits |
 | [Development](development.md) | Local builds, dev container, tests, and container verification |
 | [Releases](releases.md) | CI, architecture targets, release assets, and release procedure |
+| [Roadmap and milestones](roadmap.md) | Planned outcomes, suggested order, and completion criteria |
 | [TODO and UX improvements](todo.md) | Setup automation, device status, recovery, and usability checklist |
 | [Security policy](../SECURITY.md) | Vulnerability reporting, trust boundaries, review criteria, and known limitations |

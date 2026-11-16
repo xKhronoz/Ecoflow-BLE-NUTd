@@ -6,6 +6,7 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"strings"
 	"sync"
@@ -191,7 +192,8 @@ func TestRunSessionPublishesTelemetryAndTransitionsToWAIT(t *testing.T) {
 
 	waitForCondition(t, 1500*time.Millisecond, func() bool {
 		ups, ok := store.Get(device.Name)
-		return ok && ups.Vars["battery.charge"] == "74" && ups.Vars["ups.status"] == "OL"
+		// 120 W in, 85 W out: on the grid and charging, from the sums.
+		return ok && ups.Vars["battery.charge"] == "74" && ups.Vars["ups.status"] == "OL CHRG"
 	})
 	waitForCondition(t, 1800*time.Millisecond, func() bool {
 		ups, ok := store.Get(device.Name)
@@ -470,11 +472,109 @@ func TestRunSessionRetainsPartialTelemetry(t *testing.T) {
 	conn.emit(mustEncode(Packet{Src: 2, CmdSet: 0xfe, CmdID: 0x15, Payload: payload, Version: 0x03}.MarshalBinary()))
 	waitForCondition(t, time.Second, func() bool {
 		u, ok := store.Get(device.Name)
-		return ok && u.Vars["output.power"] == "42"
+		return ok && u.Vars["ups.realpower"] == "42"
 	})
 	u, _ := store.Get(device.Name)
-	if u.Vars["ups.status"] != "OL" || u.Vars["battery.charge"] != "74" || u.Vars["battery.runtime"] != "1800" || u.Vars["input.power"] != "120" {
+	// The merged sums (120 W in, 42 W out) also say the pack is charging.
+	if u.Vars["ups.status"] != "OL CHRG" || u.Vars["battery.charge"] != "74" || u.Vars["battery.runtime"] != "1800" || u.Vars["experimental.input.realpower.total"] != "120" {
 		t.Fatalf("partial telemetry discarded prior state: %#v", u.Vars)
+	}
+	if u.Vars["battery.charger.status"] != "charging" {
+		t.Fatalf("battery.charger.status = %q, want charging from the merged sums", u.Vars["battery.charger.status"])
+	}
+}
+
+func TestRunSessionControlPacketsKeepUnknownDiagnostics(t *testing.T) {
+	// Capture only after the session stops; the nonparallel test also keeps
+	// the package's parallel session tests out of this global log capture.
+	for _, pending := range []bool{true, false} {
+		t.Run(fmt.Sprintf("pending=%t", pending), func(t *testing.T) {
+			var logs bytes.Buffer
+			previous := slog.Default()
+			slog.SetDefault(slog.New(slog.NewTextHandler(&logs, nil)))
+			defer slog.SetDefault(previous)
+
+			cfg := &config.Config{Provider: config.ProviderCfg{ConnectTimeoutSeconds: 1, PollSeconds: 60}}
+			device := config.Device{Name: "river3", MAC: "AA:BB:CC:DD:EE:FF", StaleTimeoutSeconds: 60}
+			packets := []Packet{
+				{Src: 0x35, CmdSet: 0x35, CmdID: 0x89, Payload: []byte{0, 0}},
+				{Src: 0x35, CmdSet: 0x01, CmdID: 0x52},
+				{Src: 0x35, CmdSet: 0x01, CmdID: 0x52}, // Rate-limited, still handled.
+				{Src: 0x35, CmdSet: 0x01, CmdID: 0x52, Payload: []byte{0, 0, 0, 0, 0}},
+				{Src: 0x35, CmdSet: 0x01, CmdID: 0x53, Payload: []byte{0}},
+				{Src: 0x35, CmdSet: 0x01, CmdID: 0x99, Payload: []byte{1}},
+				{Src: 0x35, CmdSet: 0x01, CmdID: 0x99, Payload: []byte{1}},
+				{Src: 0x36, CmdSet: 0x35, CmdID: 0x89, Payload: []byte{0, 0}},
+				// Unexpected payload shapes must remain visible too.
+				{Src: 0x35, CmdSet: 0x35, CmdID: 0x89, Payload: []byte{0}},
+				{Src: 0x35, CmdSet: 0x01, CmdID: 0x52, Payload: []byte{0}},
+				{Src: 0x35, CmdSet: 0x01, CmdID: 0x53},
+			}
+			var batch []byte
+			for _, packet := range packets {
+				packet.Version = 0x03
+				batch = append(batch, mustEncode(packet.MarshalBinary())...)
+			}
+			batch = append(batch, makeV3TelemetryPacket(74, 1800, 120, 85)...)
+			conn := &fakeConn{}
+			conn.writeHook = func(c *fakeConn, data []byte, _ bool) error {
+				request, err := ParsePacket(data, false)
+				if err != nil {
+					return err
+				}
+				if request.CmdSet == 0x35 && request.CmdID == 0x86 {
+					reply := mustEncode(Packet{Src: 0x35, CmdSet: 0x35, CmdID: 0x86, Version: 0x03}.MarshalBinary())
+					if pending {
+						c.emit(append(reply, batch...))
+					} else {
+						c.emit(reply)
+						c.emit(batch)
+					}
+				}
+				return nil
+			}
+			p := NewProvider(cfg)
+			p.transport = &fakeTransport{
+				discoveries: map[string]Discovery{device.MAC: makeDiscovery(device.MAC, "R631123456789012", 0)},
+				connections: map[string][]*fakeConn{device.MAC: {conn}},
+			}
+			store := state.New()
+			ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+			done := make(chan struct{})
+			var sessionErr error
+			go func() {
+				sessionErr = p.runSession(ctx, store, device, "user", "user_id")
+				close(done)
+			}()
+			t.Cleanup(func() { cancel(); <-done })
+			waitForCondition(t, time.Second, func() bool {
+				u, ok := store.Get(device.Name)
+				return ok && u.Vars["battery.charge"] == "74"
+			})
+			cancel()
+			<-done
+			if sessionErr != nil {
+				t.Fatal(sessionErr)
+			}
+			if got := strings.Count(logs.String(), "packet kind not decoded"); got != 5 {
+				t.Fatalf("unknown diagnostics = %d, want 5:\n%s", got, &logs)
+			}
+			for _, fields := range []string{
+				"src=0x35 cmd_set=0x01 cmd_id=0x99 bytes=1",
+				"src=0x36 cmd_set=0x35 cmd_id=0x89 bytes=2",
+				"src=0x35 cmd_set=0x35 cmd_id=0x89 bytes=1",
+				"src=0x35 cmd_set=0x01 cmd_id=0x52 bytes=1",
+				"src=0x35 cmd_set=0x01 cmd_id=0x53 bytes=0",
+			} {
+				if !strings.Contains(logs.String(), fields) {
+					t.Errorf("missing unknown diagnostic %q:\n%s", fields, &logs)
+				}
+			}
+			// Two authentication writes plus one set of three time responses.
+			if got := len(conn.writes); got != 5 {
+				t.Fatalf("writes = %d, want 5 (time response rate limit preserved)", got)
+			}
+		})
 	}
 }
 

@@ -19,7 +19,8 @@ func newTestServer() *Server {
 		"ups.status":     "OL",
 	})
 	return New(&config.Config{
-		Auth: config.AuthConfig{Username: "monuser", Password: "secret"},
+		Auth:    config.AuthConfig{Username: "monuser", Password: "secret"},
+		Devices: []config.Device{{Name: "river3", Model: "River 3"}},
 	}, store)
 }
 
