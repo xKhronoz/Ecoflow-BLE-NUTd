@@ -51,11 +51,13 @@ The health check verifies that the NUT server responds. Check logs for `eco-ble 
 
 Browse published images on [GHCR container package](https://github.com/xKhronoz/Ecoflow-BLE-NUTd/pkgs/container/ecoflow-ble-nutd) and [Docker Hub](https://hub.docker.com/r/khronoz/ecoflow-ble-nutd). See [registry setup and tags](../../docs/releases.md#container-image-publishing). To use an image instead of building locally, replace the Compose service's `build` block and `image` line with:
 
+#### GitHub Container Registry
 ```yaml
-# GHCR
     image: ghcr.io/xkhronoz/ecoflow-ble-nutd:v0.3.0
-# --------------------------OR---------------------------
-# Docker Hub
+```
+
+#### Docker Hub
+```yaml
     image: khronoz/ecoflow-ble-nutd:v0.3.0
 ```
 
