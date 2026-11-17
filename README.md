@@ -1,6 +1,6 @@
 # Ecoflow-BLE-NUTd
 
-A small NUT-compatible daemon that exposes EcoFlow power stations as virtual UPS devices over local Bluetooth LE.
+A lightweight NUT-compatible Go daemon that exposes EcoFlow power stations connected over local Bluetooth LE as virtual UPS devices.
 
 It runs on Linux with BlueZ, keeps runtime state in memory, and supports low-RAM hosts such as Raspberry Pi. The optional web UI shows device status and can pause or resume the collector. No database, Home Assistant, or MQTT service is required.
 
